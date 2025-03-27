@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional
 import os
@@ -133,3 +133,14 @@ async def get_top_100_stars_project(project_title: str, db: psycopg2.extensions.
           raise HTTPException(status_code=500, detail=str(e))
 
 ####################################################### stars #######################################################   
+
+####################################################### health #######################################################
+
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    # This endpoint requires no authentication and simply returns 200 OK
+    # You could add logic here later to check DB connections, etc., if needed
+    # but for a basic uptime check, just returning 200 is often enough.
+    return {"status": "ok"}
+
+####################################################### health #######################################################
