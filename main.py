@@ -51,7 +51,7 @@ def get_db_connection():
 class top_100_projects_forks(BaseModel):  # Replace with your actual data structure
     project_title: str
     latest_data_timestamp: str
-    forks: int
+    fork_count: int
 
 @app.get("/projects/top-forks", response_model=List[top_100_projects_forks])
 async def get_top_100_forks(db: psycopg2.extensions.connection = Depends(get_db_connection)):
@@ -96,7 +96,7 @@ async def get_top_100_forks_project(project_title: str, db: psycopg2.extensions.
 class top_100_projects_stars(BaseModel):  # Replace with your actual data structure
     project_title: str
     latest_data_timestamp: str
-    stars: int
+    stargaze_count: int
 
 @app.get("/projects/top-stars", response_model=List[top_100_projects_stars])
 async def get_top_100_stars(db: psycopg2.extensions.connection = Depends(get_db_connection)):
