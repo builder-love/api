@@ -53,7 +53,7 @@ class top_100_projects_forks(BaseModel):  # Replace with your actual data struct
     latest_data_timestamp: str
     fork_count: int
 
-@app.get("/projects/top-forks", response_model=List[top_100_projects_forks])
+@app.get("/projects/top100-forks-count", response_model=List[top_100_projects_forks])
 async def get_top_100_forks(db: psycopg2.extensions.connection = Depends(get_db_connection)):
     """
     Retrieves the top 100 projects by forks from the api schema in postgresdatabase.
@@ -63,13 +63,13 @@ async def get_top_100_forks(db: psycopg2.extensions.connection = Depends(get_db_
     try:
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-            cur.execute("SELECT * FROM api.top_100_forks;")  # Use your view
+            cur.execute("SELECT * FROM api.top_100_projects_fork_count;")  # Use your view
             results = cur.fetchall()
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/projects/top-forks/{project_title}", response_model=top_100_projects_forks)
+@app.get("/projects/top100-forks-count/{project_title}", response_model=top_100_projects_forks)
 async def get_top_100_forks_project(project_title: str, db: psycopg2.extensions.connection = Depends(get_db_connection)):
      """Retrieves a single project by project_title."""
      try:
@@ -78,7 +78,7 @@ async def get_top_100_forks_project(project_title: str, db: psycopg2.extensions.
 
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-             cur.execute("SELECT * FROM api.top_100_forks WHERE project_title = %s;", (project_title,))
+             cur.execute("SELECT * FROM api.top_100_projects_fork_count WHERE project_title = %s;", (project_title,))
              result = cur.fetchone()
              if result is None:
                   raise HTTPException(status_code=404, detail="Project not found")
@@ -98,7 +98,7 @@ class top_100_projects_stars(BaseModel):  # Replace with your actual data struct
     latest_data_timestamp: str
     stargaze_count: int
 
-@app.get("/projects/top-stars", response_model=List[top_100_projects_stars])
+@app.get("/projects/top100-star-count", response_model=List[top_100_projects_stars])
 async def get_top_100_stars(db: psycopg2.extensions.connection = Depends(get_db_connection)):
     """
     Retrieves the top 100 projects by stars from the api schema in postgresdatabase.
@@ -108,13 +108,13 @@ async def get_top_100_stars(db: psycopg2.extensions.connection = Depends(get_db_
             raise HTTPException(status_code=503, detail="Database not connected")
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-            cur.execute("SELECT * FROM api.top_100_stars;")  # Use your view
+            cur.execute("SELECT * FROM api.top_100_projects_stargaze_count;")  # Use your view
             results = cur.fetchall()
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/projects/top-stars/{project_title}", response_model=top_100_projects_stars)
+@app.get("/projects/top100-star-count/{project_title}", response_model=top_100_projects_stars)
 async def get_top_100_stars_project(project_title: str, db: psycopg2.extensions.connection = Depends(get_db_connection)):
      """Retrieves a single project by project_title."""
      try:
@@ -122,7 +122,7 @@ async def get_top_100_stars_project(project_title: str, db: psycopg2.extensions.
             raise HTTPException(status_code=503, detail="Database not connected")
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-             cur.execute("SELECT * FROM api.top_100_stars WHERE project_title = %s;", (project_title,))
+             cur.execute("SELECT * FROM api.top_100_projects_stargaze_count WHERE project_title = %s;", (project_title,))
              result = cur.fetchone()
              if result is None:
                   raise HTTPException(status_code=404, detail="Project not found")
