@@ -44,6 +44,51 @@ def get_db_connection():
             # This branch is reached if connect() failed
             print("No active database connection to close.") # Added log
 
+####################################################### top 50 projects trend #######################################################
+
+# Pydantic Models (Data Validation) - top 50 projects trend view
+class top_50_projects_trend(BaseModel):
+    project_title: str
+    report_date: str
+    weighted_score_index: float
+
+@app.get("/projects/top50-trend", response_model=List[top_50_projects_trend])
+async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_connection)):
+    """
+    Retrieves the top 50 projects by weighted score index from the api schema in postgres database.
+    """
+    if db is None: # Good check, though get_db_connection should raise exceptions
+         raise HTTPException(status_code=503, detail="Database not connected")
+    try:
+        # Use 'db' (the connection object) directly to get a cursor
+        with db.cursor() as cur:
+            cur.execute("SELECT project_title, report_date, weighted_score_index FROM api.top_50_projects_trend;") 
+            results = cur.fetchall()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects/top50-trend/{project_title}", response_model=top_50_projects_trend)
+async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.connection = Depends(get_db_connection)):
+     """Retrieves a single project by project_title."""
+     try:
+        if db is None: # Good check, though get_db_connection should raise exceptions
+            raise HTTPException(status_code=503, detail="Database not connected")
+
+        # Use 'db' (the connection object) directly to get a cursor
+        with db.cursor() as cur:
+             cur.execute("SELECT project_title, report_date, weighted_score_index FROM api.top_50_projects_trend WHERE project_title = %s;", (project_title,))
+             result = cur.fetchone()
+             if result is None:
+                  raise HTTPException(status_code=404, detail="Project not found")
+             return result
+     except HTTPException:  # Re-raise HTTPException
+         raise
+     except Exception as e:
+          raise HTTPException(status_code=500, detail=str(e))
+
+####################################################### end top 50 projects trend #######################################################
+
 
 ####################################################### forks #######################################################
 
