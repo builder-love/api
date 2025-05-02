@@ -51,11 +51,11 @@ class top_50_projects_trend(BaseModel):
     project_title: str
     report_date: str
     weighted_score_index: float
-    fork_count: int
-    stargaze_count: int
-    commit_count: int
-    contributor_count: int
-    watcher_count: int
+    fork_count: float
+    stargaze_count: float
+    commit_count: float
+    contributor_count: float
+    watcher_count: float
     is_not_fork_ratio: float
     commit_count_pct_change_over_4_weeks: float
     contributor_count_pct_change_over_4_weeks: float
