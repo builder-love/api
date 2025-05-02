@@ -51,6 +51,19 @@ class top_50_projects_trend(BaseModel):
     project_title: str
     report_date: str
     weighted_score_index: float
+    fork_count: int
+    stargaze_count: int
+    commit_count: int
+    contributor_count: int
+    watcher_count: int
+    is_not_fork_ratio: float
+    commit_count_pct_change_over_4_weeks: float
+    contributor_count_pct_change_over_4_weeks: float
+    fork_count_pct_change_over_4_weeks: float
+    stargaze_count_pct_change_over_4_weeks: float
+    watcher_count_pct_change_over_4_weeks: float
+    is_not_fork_ratio_pct_change_over_4_weeks: float
+    project_rank_category: str
 
 @app.get("/projects/top50-trend", response_model=List[top_50_projects_trend])
 async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_connection)):
@@ -62,7 +75,27 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
     try:
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-            cur.execute("SELECT project_title, report_date, weighted_score_index FROM api.top_50_projects_trend;") 
+            cur.execute("""
+                SELECT 
+                    project_title, 
+                    report_date, 
+                    weighted_score_index,
+                    fork_count, 
+                    stargaze_count, 
+                    commit_count, 
+                    contributor_count, 
+                    watcher_count,
+                    is_not_fork_ratio, 
+                    commit_count_pct_change_over_4_weeks,
+                    contributor_count_pct_change_over_4_weeks, 
+                    fork_count_pct_change_over_4_weeks,
+                    stargaze_count_pct_change_over_4_weeks, 
+                    watcher_count_pct_change_over_4_weeks,
+                    is_not_fork_ratio_pct_change_over_4_weeks, 
+                    project_rank_category
+
+                FROM api.top_50_projects_trend;
+            """) 
             results = cur.fetchall()
         return results
     except Exception as e:
@@ -77,7 +110,27 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
 
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-             cur.execute("SELECT project_title, report_date, weighted_score_index FROM api.top_50_projects_trend WHERE project_title = %s;", (project_title,))
+             cur.execute("""
+                SELECT
+                    project_title,
+                    report_date,
+                    weighted_score_index,
+                    stargaze_count, 
+                    commit_count, 
+                    contributor_count, 
+                    watcher_count,
+                    is_not_fork_ratio, 
+                    commit_count_pct_change_over_4_weeks,
+                    contributor_count_pct_change_over_4_weeks, 
+                    fork_count_pct_change_over_4_weeks,
+                    stargaze_count_pct_change_over_4_weeks, 
+                    watcher_count_pct_change_over_4_weeks,
+                    is_not_fork_ratio_pct_change_over_4_weeks, 
+                    project_rank_category
+
+                FROM api.top_50_projects_trend 
+                WHERE project_title = %s;
+             """, (project_title,))
              result = cur.fetchone()
              if result is None:
                   raise HTTPException(status_code=404, detail="Project not found")
