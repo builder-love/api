@@ -51,18 +51,18 @@ class top_50_projects_trend(BaseModel):
     project_title: str
     report_date: str
     weighted_score_index: float
-    fork_count: float
-    stargaze_count: float
-    commit_count: float
-    contributor_count: float
-    watcher_count: float
-    is_not_fork_ratio: float
-    commit_count_pct_change_over_4_weeks: float
-    contributor_count_pct_change_over_4_weeks: float
-    fork_count_pct_change_over_4_weeks: float
-    stargaze_count_pct_change_over_4_weeks: float
-    watcher_count_pct_change_over_4_weeks: float
-    is_not_fork_ratio_pct_change_over_4_weeks: float
+    fork_count: Optional[float]
+    stargaze_count: Optional[float]
+    commit_count: Optional[float]
+    contributor_count: Optional[float]
+    watcher_count: Optional[float]
+    is_not_fork_ratio: Optional[float]
+    commit_count_pct_change_over_4_weeks: Optional[float]
+    contributor_count_pct_change_over_4_weeks: Optional[float]
+    fork_count_pct_change_over_4_weeks: Optional[float]
+    stargaze_count_pct_change_over_4_weeks: Optional[float]
+    watcher_count_pct_change_over_4_weeks: Optional[float]
+    is_not_fork_ratio_pct_change_over_4_weeks: Optional[float]
     project_rank_category: str
 
 @app.get("/projects/top50-trend", response_model=List[top_50_projects_trend])
