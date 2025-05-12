@@ -51,6 +51,7 @@ class top_50_projects_trend(BaseModel):
     project_title: str
     report_date: str
     weighted_score_index: float
+    repo_count: Optional[float]
     fork_count: Optional[float]
     stargaze_count: Optional[float]
     commit_count: Optional[float]
@@ -80,6 +81,7 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
                     project_title, 
                     report_date, 
                     weighted_score_index,
+                    repo_count,
                     fork_count, 
                     stargaze_count, 
                     commit_count, 
@@ -115,6 +117,7 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
                     project_title,
                     report_date,
                     weighted_score_index,
+                    repo_count,
                     stargaze_count, 
                     commit_count, 
                     contributor_count, 
