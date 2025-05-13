@@ -145,6 +145,61 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
 
 ####################################################### end top 50 projects trend #######################################################
 
+####################################################### top 100 contributors #######################################################
+
+# Pydantic Models (Data Validation) - top 100 contributors view
+class top_100_contributors(BaseModel):
+    contributor_login: str
+    contributor_type: str
+    dominant_language: str
+    location: str
+    contributor_html_url: str
+    total_repos_contributed_to: int
+    total_contributions: int
+    contributions_to_og_repos: int
+    normalized_total_repo_quality_weighted_contribution_score_rank: int
+    followers_total_count: int
+    weighted_score_index: float
+    quartile_bucket: int
+    contributor_rank: int
+    latest_data_timestamp: str
+
+@app.get("/contributors/top100", response_model=List[top_100_contributors])
+async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(get_db_connection)):
+    """
+    Retrieves the top 100 contributors from the api schema in postgres database.
+    """
+    if db is None: # Good check, though get_db_connection should raise exceptions
+         raise HTTPException(status_code=503, detail="Database not connected")
+    try:
+        # Use 'db' (the connection object) directly to get a cursor
+        with db.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    contributor_login, 
+                    contributor_type, 
+                    dominant_language,
+                    location,
+                    contributor_html_url,
+                    total_repos_contributed_to,
+                    total_contributions,
+                    contributions_to_og_repos,
+                    normalized_total_repo_quality_weighted_contribution_score_rank,
+                    followers_total_count,
+                    weighted_score_index,
+                    quartile_bucket,
+                    contributor_rank, 
+                    latest_data_timestamp
+
+                FROM api.top_100_contributors;
+            """) 
+            results = cur.fetchall()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+####################################################### end top 100 contributors #######################################################
 
 ####################################################### health #######################################################
 
