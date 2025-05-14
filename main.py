@@ -160,7 +160,6 @@ class top_100_contributors(BaseModel):
     normalized_total_repo_quality_weighted_contribution_score_rank: Optional[int]
     followers_total_count: Optional[int]
     weighted_score_index: float
-    quartile_bucket: Optional[int]
     contributor_rank: Optional[int]
     latest_data_timestamp: str
 
@@ -187,7 +186,6 @@ async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(
                     normalized_total_repo_quality_weighted_contribution_score_rank,
                     followers_total_count,
                     weighted_score_index,
-                    quartile_bucket,
                     contributor_rank, 
                     latest_data_timestamp
 
