@@ -150,7 +150,7 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
 # Pydantic Models (Data Validation) - top 100 contributors view
 class top_100_contributors(BaseModel):
     contributor_login: str
-    contributor_type: str
+    is_anon: bool
     dominant_language: str
     location: str
     contributor_html_url: str
@@ -177,7 +177,7 @@ async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(
             cur.execute("""
                 SELECT 
                     contributor_login, 
-                    contributor_type, 
+                    is_anon, 
                     dominant_language,
                     location,
                     contributor_html_url,
