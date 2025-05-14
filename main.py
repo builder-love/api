@@ -150,18 +150,18 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
 # Pydantic Models (Data Validation) - top 100 contributors view
 class top_100_contributors(BaseModel):
     contributor_login: str
-    is_anon: bool
-    dominant_language: str
-    location: str
-    contributor_html_url: str
-    total_repos_contributed_to: int
-    total_contributions: int
-    contributions_to_og_repos: int
-    normalized_total_repo_quality_weighted_contribution_score_rank: int
-    followers_total_count: int
+    is_anon: Optional[bool]
+    dominant_language: Optional[str]
+    location: Optional[str]
+    contributor_html_url: Optional[str]
+    total_repos_contributed_to: Optional[int]
+    total_contributions: Optional[int]
+    contributions_to_og_repos: Optional[int]
+    normalized_total_repo_quality_weighted_contribution_score_rank: Optional[int]
+    followers_total_count: Optional[int]
     weighted_score_index: float
-    quartile_bucket: int
-    contributor_rank: int
+    quartile_bucket: Optional[int]
+    contributor_rank: Optional[int]
     latest_data_timestamp: str
 
 @app.get("/contributors/top100", response_model=List[top_100_contributors])
