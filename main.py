@@ -80,7 +80,7 @@ class project_metrics(BaseModel):
 @app.get("/api/projects/search_top_projects", response_model=List[project_metrics]) # Using your existing model
 async def search_top_projects_by_title(
     q: Optional[str] = Query(None, min_length=1, description="Search term for project title (case-insensitive)"),
-    limit: int = Query(10, ge=1, le=50, description="Maximum number of results to return"),
+    limit: int = Query(10, ge=1, le=100, description="Maximum number of results to return"),
     db: psycopg2.extensions.connection = Depends(get_db_connection)
 ):
     """
@@ -107,8 +107,8 @@ async def search_top_projects_by_title(
                         WHEN project_title ILIKE %s THEN 2 -- Starts with (case-insensitive)
                         ELSE 3
                     END,
-                    LENGTH(project_title),
-                    stargaze_count DESC NULLS LAST
+                    weighted_score_index DESC NULLS LAST,
+                    LENGTH(project_title)
                 LIMIT %s;
             """
             # Parameters for ILIKE
