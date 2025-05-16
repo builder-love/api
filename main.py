@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional
 import os
@@ -43,6 +43,136 @@ def get_db_connection():
         else:
             # This branch is reached if connect() failed
             print("No active database connection to close.") # Added log
+
+####################################################### get project metrics #######################################################
+
+# Pydantic Models (Data Validation) - all projects view
+class project_metrics(BaseModel):
+    project_title: str
+    latest_data_timestamp: str
+    contributor_count: Optional[int]
+    contributor_count_pct_change_over_4_weeks: Optional[float]
+    repo_count: Optional[int]
+    fork_count: Optional[int]
+    fork_count_pct_change_over_4_weeks: Optional[float]
+    stargaze_count: Optional[int]
+    stargaze_count_pct_change_over_4_weeks: Optional[float]
+    commit_count: Optional[int]
+    commit_count_pct_change_over_4_weeks: Optional[float]
+    watcher_count: Optional[int]
+    watcher_count_pct_change_over_4_weeks: Optional[float]
+    is_not_fork_ratio: Optional[float]
+    is_not_fork_ratio_pct_change_over_4_weeks: Optional[float]
+    project_rank: Optional[int]
+    prior_4_weeks_project_rank: Optional[int]
+    absolute_project_rank_change_over_4_weeks: Optional[int]
+    rank_of_project_rank_change_over_4_weeks: Optional[int]
+    quartile_bucket: Optional[int]
+    project_rank_category: Optional[str]
+    weighted_score_index: Optional[float]
+    weighted_score_sma: Optional[float]
+    prior_4_weeks_weighted_score: Optional[float]
+
+#######################################################
+# New Endpoints for Project Search & Details from 'top_projects'
+#######################################################
+
+@app.get("/api/projects/search_top_projects", response_model=List[project_metrics]) # Using your existing model
+async def search_top_projects_by_title(
+    q: Optional[str] = Query(None, min_length=1, description="Search term for project title (case-insensitive)"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of results to return"),
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
+    """
+    Searches for projects in the 'top_projects' view by project_title using a case-insensitive partial match.
+    Returns a list of matching projects.
+    Used for both autocomplete suggestions and displaying ambiguous search results.
+    """
+    if not q:
+        return [] # Return empty list if query is empty or None
+
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+    try:
+        with db.cursor() as cur:
+            # The SQL query will search for project_title containing the query string (q)
+            # ILIKE for case-insensitive search.
+            # Orders by how early the match appears, then by title length, then by a popularity metric (e.g., stargaze_count)
+            sql_query = """
+                SELECT * FROM api.top_projects
+                WHERE project_title ILIKE %s
+                ORDER BY
+                    CASE
+                        WHEN project_title ILIKE %s THEN 1 -- Exact match (case-insensitive)
+                        WHEN project_title ILIKE %s THEN 2 -- Starts with (case-insensitive)
+                        ELSE 3
+                    END,
+                    LENGTH(project_title),
+                    stargaze_count DESC NULLS LAST
+                LIMIT %s;
+            """
+            # Parameters for ILIKE
+            search_term_contains = f"%{q}%"
+            search_term_exact = q # For exact ILIKE match
+            search_term_starts_with = f"{q}%"
+
+            cur.execute(sql_query, (search_term_contains, search_term_exact, search_term_starts_with, limit))
+            results = cur.fetchall()
+        return results
+    except psycopg2.Error as e:
+        print(f"Database error during project search: {e}")
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
+    except Exception as e:
+        print(f"Unexpected error during project search: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+@app.get("/api/projects/details_from_top_projects/{project_title_url_encoded}", response_model=project_metrics) # Using your existing model
+async def get_single_project_details_from_top_projects(
+    project_title_url_encoded: str,
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
+    """
+    Retrieves the full details for a single project from the 'top_projects' view
+    by its URL-encoded project_title.
+    Uses a case-insensitive match for project_title.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+
+    import urllib.parse
+    try:
+        # URL decode the project title
+        project_title = urllib.parse.unquote(project_title_url_encoded)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
+
+    try:
+        with db.cursor() as cur:
+            # It's safer to use ILIKE if the exact casing isn't guaranteed or if names
+            # fetched from search (which is ILIKE) are used directly for lookup.
+            # However, if project_title is a strict unique key, '=' might be preferred.
+            # Given search is ILIKE, using ILIKE here for consistency can be safer.
+            sql_query = """
+                SELECT * FROM api.top_projects
+                WHERE project_title ILIKE %s;
+            """
+            cur.execute(sql_query, (project_title,))
+            result = cur.fetchone()
+            if not result:
+                raise HTTPException(status_code=404, detail=f"Project '{project_title}' not found in top_projects.")
+        return result
+    except HTTPException: # Re-raise 404 if already raised
+        raise
+    except psycopg2.Error as e:
+        print(f"Database error fetching project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
+    except Exception as e:
+        print(f"Unexpected error fetching project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+####################################################### end all projects #######################################################
+
+
 
 ####################################################### top 50 projects trend #######################################################
 
