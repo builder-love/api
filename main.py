@@ -72,6 +72,7 @@ class project_metrics(BaseModel):
     weighted_score_index: Optional[float]
     weighted_score_sma: Optional[float]
     prior_4_weeks_weighted_score: Optional[float]
+    project_organization_url: Optional[str]
 
 #######################################################
 # New Endpoints for Project Search & Details from 'top_projects'
