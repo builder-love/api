@@ -73,6 +73,15 @@ class project_metrics(BaseModel):
     weighted_score_sma: Optional[float]
     prior_4_weeks_weighted_score: Optional[float]
 
+# Pydantic Model for Organization Data
+class ProjectOrganization(BaseModel):
+    project_title: Optional[str] 
+    project_organization_url: Optional[str]
+    latest_data_timestamp: Optional[str]
+    org_rank: Optional[int]
+    org_rank_category: Optional[str]
+    weighted_score_index: Optional[float]
+
 #######################################################
 # New Endpoints for Project Search & Details from 'top_projects'
 #######################################################
@@ -169,6 +178,61 @@ async def get_single_project_details_from_top_projects(
     except Exception as e:
         print(f"Unexpected error fetching project '{project_title}': {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+
+#######################################################
+# Organization Data
+#######################################################
+
+@app.get("/api/projects/{project_title_url_encoded}/top_organizations", response_model=List[ProjectOrganization])
+async def get_top_5_organizations_for_project(
+    project_title_url_encoded: str,
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
+    """
+    Retrieves the top 5 organizations associated with a specific project
+    from the 'top_5_organizations_by_project' view, based on its URL-encoded project_title.
+    Matches project_title case-insensitively.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+
+    try:
+        project_title = urllib.parse.unquote(project_title_url_encoded)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
+
+    try:
+        with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur: # Use RealDictCursor for easy Pydantic mapping
+            # 'project_title' in 'top_5_organizations_by_project' needs to match
+            # the one from 'top_projects'.
+            # the view already provides the "top 5" and is ordered,
+            sql_query = """
+                SELECT
+                    project_title,
+                    project_organization_url,
+                    latest_data_timestamp,
+                    org_rank,
+                    org_rank_category,
+                    weighted_score_index
+                FROM api.top_5_organizations_by_project
+                WHERE project_title ILIKE %s
+                ORDER BY org_rank ASC; -- Ensure they are ordered by rank
+            """
+            cur.execute(sql_query, (project_title,))
+            organizations = cur.fetchall()
+            if not organizations:
+                # It's okay if a project has no organizations, return empty list instead of 404
+                return []
+        return organizations
+    except psycopg2.Error as e:
+        print(f"Database error fetching organizations for project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
+    except Exception as e:
+        print(f"Unexpected error fetching organizations for project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+
 
 ####################################################### end all projects #######################################################
 
