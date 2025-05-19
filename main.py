@@ -83,6 +83,26 @@ class ProjectOrganization(BaseModel):
     org_rank_category: Optional[str]
     weighted_score_index: Optional[float]
 
+# Pydantic Model for Repository Details
+class RepoDetail(BaseModel):
+    project_title: Optional[str]
+    latest_data_timestamp: Optional[str]
+    repo: Optional[str] 
+    fork_count: Optional[int]
+    stargaze_count: Optional[int]
+    watcher_count: Optional[int]
+    weighted_score_index: Optional[float] 
+    repo_rank: Optional[int] 
+    quartile_bucket: Optional[int]
+    repo_rank_category: Optional[str]
+
+class PaginatedRepoResponse(BaseModel):
+    items: List[RepoDetail]
+    total_items: int
+    page: int
+    limit: int
+    total_pages: int
+
 #######################################################
 # New Endpoints for Project Search & Details from 'top_projects'
 #######################################################
@@ -181,7 +201,7 @@ async def get_single_project_details_from_top_projects(
 
 
 #######################################################
-# Organization Data
+# Project-specific Organization Data
 #######################################################
 
 @app.get("/api/projects/{project_title_url_encoded}/top_organizations", response_model=List[ProjectOrganization])
@@ -231,6 +251,97 @@ async def get_top_5_organizations_for_project(
     except Exception as e:
         print(f"Unexpected error fetching organizations for project '{project_title}': {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+#######################################################
+# Project-specific Repo Details
+#######################################################
+# Whitelist of columns that can be sorted to prevent SQL injection
+VALID_SORT_COLUMNS_REPOS = {
+    "repo": "repo",
+    "fork_count": "fork_count",
+    "stargaze_count": "stargaze_count",
+    "watcher_count": "watcher_count",
+    "weighted_score_index": "weighted_score_index",
+    "repo_rank": "repo_rank",
+    "quartile_bucket": "quartile_bucket",
+    "repo_rank_category": "repo_rank_category",
+    "latest_data_timestamp": "latest_data_timestamp" 
+}
+
+@app.get("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse)
+async def get_project_repositories(
+    project_title_url_encoded: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(None, min_length=1, description="Search term for repository name (case-insensitive)"),
+    sort_by: Optional[str] = Query("repo_rank", description=f"Column to sort by. Allowed: {', '.join(VALID_SORT_COLUMNS_REPOS.keys())}"),
+    sort_order: Optional[str] = Query("asc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
+    """
+    Retrieves paginated, searchable, and sortable repository details for a specific project
+    from api.top_project_repos view.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+
+    try:
+        project_title = urllib.parse.unquote(project_title_url_encoded)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
+
+    # Validate sort_by column
+    if sort_by and sort_by not in VALID_SORT_COLUMNS_REPOS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort_by column. Allowed values: {', '.join(VALID_SORT_COLUMNS_REPOS.keys())}")
+    
+    db_sort_column = VALID_SORT_COLUMNS_REPOS.get(sort_by, "repo_rank") # Default sort
+    db_sort_order = "ASC" if sort_order == "asc" else "DESC"
+
+    base_query = "FROM api.top_project_repos WHERE project_title ILIKE %(project_title)s"
+    count_query_sql = f"SELECT COUNT(*) {base_query}"
+    data_query_sql_select = f"SELECT project_title, latest_data_timestamp, repo, fork_count, stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, repo_rank_category {base_query}"
+
+    params = {"project_title": project_title}
+
+    if search:
+        # Ensure search is applied to the correct field, e.g., 'repo' (the repository name/identifier)
+        data_query_sql_select += " AND repo ILIKE %(search_term)s"
+        count_query_sql += " AND repo ILIKE %(search_term)s"
+        params["search_term"] = f"%{search}%"
+    
+    # Add ORDER BY, LIMIT, OFFSET to the data query
+    data_query_sql_select += f" ORDER BY {db_sort_column} {db_sort_order} NULLS LAST" # NULLS LAST can be useful
+    data_query_sql_select += " LIMIT %(limit)s OFFSET %(offset)s"
+    
+    offset = (page - 1) * limit
+    params["limit"] = limit
+    params["offset"] = offset
+
+    try:
+        with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Get total count
+            cur.execute(count_query_sql, {"project_title": project_title, "search_term": f"%{search}%" if search else "%"}) # Adjust params for count
+            total_items = cur.fetchone()['count']
+
+            # Get paginated data
+            cur.execute(data_query_sql_select, params)
+            items = cur.fetchall()
+            
+        total_pages = (total_items + limit - 1) // limit  # Ceiling division
+
+        return {
+            "items": items,
+            "total_items": total_items,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages
+        }
+    except psycopg2.Error as e:
+        print(f"Database error fetching repositories for project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail="Database query error while fetching repositories.")
+    except Exception as e:
+        print(f"Unexpected error fetching repositories for project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching repositories.")
 
 
 
