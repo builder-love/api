@@ -4,6 +4,7 @@ from typing import List, Optional
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import urllib.parse
 
 app = FastAPI()
 
@@ -148,7 +149,6 @@ async def get_single_project_details_from_top_projects(
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    import urllib.parse
     try:
         # URL decode the project title
         project_title = urllib.parse.unquote(project_title_url_encoded)
