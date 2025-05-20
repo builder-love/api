@@ -261,9 +261,7 @@ VALID_SORT_COLUMNS_REPOS = {
     "fork_count": "fork_count",
     "stargaze_count": "stargaze_count",
     "watcher_count": "watcher_count",
-    "weighted_score_index": "weighted_score_index",
     "repo_rank": "repo_rank",
-    "quartile_bucket": "quartile_bucket",
     "repo_rank_category": "repo_rank_category"
 }
 
