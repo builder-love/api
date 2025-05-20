@@ -264,8 +264,7 @@ VALID_SORT_COLUMNS_REPOS = {
     "weighted_score_index": "weighted_score_index",
     "repo_rank": "repo_rank",
     "quartile_bucket": "quartile_bucket",
-    "repo_rank_category": "repo_rank_category",
-    "latest_data_timestamp": "latest_data_timestamp" 
+    "repo_rank_category": "repo_rank_category"
 }
 
 @app.get("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse)
