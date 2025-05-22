@@ -514,7 +514,7 @@ async def health_check():
 
 ####################################################### testing #######################################################
 
-# Pydantic Models (Data Validation) - top 100 contributors view
+# Pydantic Models (Data Validation) - test rec count from staging schema
 class repo_count_test(BaseModel):
     rec_count: int
 
