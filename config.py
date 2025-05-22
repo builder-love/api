@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Schema prefix (empty for production, "_stg" for staging)
     SCHEMA_SUFFIX: str = ""
     
+    # API Key
+    API_KEY: str
+    
     class Config:
         env_file = ".env"
 
@@ -39,5 +42,6 @@ def get_settings():
         DATABASE_HOST=os.getenv("DATABASE_HOST"),
         DATABASE_USER=os.getenv("DATABASE_USER"),
         DATABASE_PASSWORD=os.getenv("DATABASE_PASSWORD"),
-        DATABASE_NAME=os.getenv("DATABASE_NAME")
+        DATABASE_NAME=os.getenv("DATABASE_NAME"),
+        API_KEY=os.getenv("API_KEY")
     ) 

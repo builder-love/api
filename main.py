@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional
 import os
@@ -11,6 +12,17 @@ app = FastAPI()
 
 # Get settings
 settings = get_settings()
+
+# API Key Authentication
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key != settings.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API Key"
+        )
+    return api_key
 
 # Database Connection Function (Dependency)
 def get_db_connection():
@@ -106,7 +118,7 @@ class PaginatedRepoResponse(BaseModel):
 # New Endpoints for Project Search & Details from 'top_projects'
 #######################################################
 
-@app.get("/api/projects/search_top_projects", response_model=List[project_metrics]) # Using your existing model
+@app.get("/api/projects/search_top_projects", response_model=List[project_metrics], dependencies=[Depends(get_api_key)])
 async def search_top_projects_by_title(
     q: Optional[str] = Query(None, min_length=1, description="Search term for project title (case-insensitive)"),
     limit: int = Query(10, ge=1, le=100, description="Maximum number of results to return"),
@@ -155,7 +167,7 @@ async def search_top_projects_by_title(
         print(f"Unexpected error during project search: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
-@app.get("/api/projects/details_from_top_projects/{project_title_url_encoded}", response_model=project_metrics) # Using your existing model
+@app.get("/api/projects/details_from_top_projects/{project_title_url_encoded}", response_model=project_metrics, dependencies=[Depends(get_api_key)])
 async def get_single_project_details_from_top_projects(
     project_title_url_encoded: str,
     db: psycopg2.extensions.connection = Depends(get_db_connection)
@@ -203,7 +215,7 @@ async def get_single_project_details_from_top_projects(
 # Project-specific Organization Data
 #######################################################
 
-@app.get("/api/projects/{project_title_url_encoded}/top_organizations", response_model=List[ProjectOrganization])
+@app.get("/api/projects/{project_title_url_encoded}/top_organizations", response_model=List[ProjectOrganization], dependencies=[Depends(get_api_key)])
 async def get_top_5_organizations_for_project(
     project_title_url_encoded: str,
     db: psycopg2.extensions.connection = Depends(get_db_connection)
@@ -264,7 +276,7 @@ VALID_SORT_COLUMNS_REPOS = {
     "repo_rank_category": "repo_rank_category"
 }
 
-@app.get("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse)
+@app.get("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
 async def get_project_repositories(
     project_title_url_encoded: str,
     page: int = Query(1, ge=1, description="Page number"),
@@ -367,7 +379,7 @@ class top_50_projects_trend(BaseModel):
     is_not_fork_ratio_pct_change_over_4_weeks: Optional[float]
     project_rank_category: str
 
-@app.get("/projects/top50-trend", response_model=List[top_50_projects_trend])
+@app.get("/projects/top50-trend", response_model=List[top_50_projects_trend], dependencies=[Depends(get_api_key)])
 async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_connection)):
     """
     Retrieves the top 50 projects by weighted score index from the api schema in postgres database.
@@ -404,7 +416,7 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/projects/top50-trend/{project_title}", response_model=top_50_projects_trend)
+@app.get("/projects/top50-trend/{project_title}", response_model=top_50_projects_trend, dependencies=[Depends(get_api_key)])
 async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.connection = Depends(get_db_connection)):
      """Retrieves a single project by project_title."""
      try:
@@ -464,7 +476,7 @@ class top_100_contributors(BaseModel):
     contributor_rank: Optional[int]
     latest_data_timestamp: str
 
-@app.get("/contributors/top100", response_model=List[top_100_contributors])
+@app.get("/contributors/top100", response_model=List[top_100_contributors], dependencies=[Depends(get_api_key)])
 async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(get_db_connection)):
     """
     Retrieves the top 100 contributors from the api schema in postgres database.
@@ -518,7 +530,7 @@ async def health_check():
 class repo_count_test(BaseModel):
     rec_count: int
 
-@app.get("/repos/count_test", response_model=List[repo_count_test])
+@app.get("/repos/count_test", response_model=List[repo_count_test], dependencies=[Depends(get_api_key)])
 async def get_repo_count_test(db: psycopg2.extensions.connection = Depends(get_db_connection)):
     """
     Retrieves the count of repos from the api schema in postgres database.
