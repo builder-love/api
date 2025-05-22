@@ -5,45 +5,44 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.parse
+from config import get_settings
 
 app = FastAPI()
 
-# Database connection details (from environment variables / secrets)
-DB_HOST = os.environ.get("DATABASE_HOST")
-DB_USER = os.environ.get("DATABASE_USER")
-DB_PASSWORD = os.environ.get("DATABASE_PASSWORD")
-DB_NAME = os.environ.get("DATABASE_NAME")
+# Get settings
+settings = get_settings()
 
 # Database Connection Function (Dependency)
 def get_db_connection():
-    conn = None  # Initialize conn as None
+    conn = None
     try:
-        print(f"Attempting DB connection to host={DB_HOST} db={DB_NAME} user={DB_USER}") # Added log
+        print(f"Attempting DB connection to host={settings.DATABASE_HOST} db={settings.DATABASE_NAME} user={settings.DATABASE_USER}")
         conn = psycopg2.connect(
-            host=DB_HOST,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            database=DB_NAME,
-            cursor_factory=RealDictCursor,  # Return results as dictionaries
+            host=settings.DATABASE_HOST,
+            user=settings.DATABASE_USER,
+            password=settings.DATABASE_PASSWORD,
+            database=settings.DATABASE_NAME,
+            cursor_factory=RealDictCursor,
         )
-        print("DB connection successful.") # Added log
-        yield conn # Yield connection only if successful
+        print("DB connection successful.")
+        yield conn
     except psycopg2.OperationalError as e:
-        # Log the error AND potentially the connection details used (be careful with passwords!)
         print(f"Database connection error (OperationalError): {e}")
-        print(f"Failed connection details: host={DB_HOST}, user={DB_USER}, db={DB_NAME}") # Log details used
+        print(f"Failed connection details: host={settings.DATABASE_HOST}, user={settings.DATABASE_USER}, db={settings.DATABASE_NAME}")
         raise HTTPException(status_code=503, detail=f"Database connection error: {e}") from e
     except Exception as e:
         print(f"Unexpected error during DB connection attempt: {type(e).__name__} - {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error during DB connection: {type(e).__name__} - {e}") from e
     finally:
-        # This block will now always execute, and 'conn' will always be defined
-        if conn is not None: # Check if conn was successfully assigned
-            print("Closing database connection.") # Added log
+        if conn is not None:
+            print("Closing database connection.")
             conn.close()
         else:
-            # This branch is reached if connect() failed
-            print("No active database connection to close.") # Added log
+            print("No active database connection to close.")
+
+# Helper function to get schema name
+def get_schema_name(base_schema: str) -> str:
+    return f"{base_schema}{settings.SCHEMA_SUFFIX}"
 
 ####################################################### get project metrics #######################################################
 
@@ -128,8 +127,8 @@ async def search_top_projects_by_title(
             # The SQL query will search for project_title containing the query string (q)
             # ILIKE for case-insensitive search.
             # Orders by how early the match appears, then by title length, then by a popularity metric (e.g., stargaze_count)
-            sql_query = """
-                SELECT * FROM api.top_projects
+            sql_query = f"""
+                SELECT * FROM {get_schema_name('api')}.top_projects
                 WHERE project_title ILIKE %s
                 ORDER BY
                     CASE
@@ -181,8 +180,8 @@ async def get_single_project_details_from_top_projects(
             # fetched from search (which is ILIKE) are used directly for lookup.
             # However, if project_title is a strict unique key, '=' might be preferred.
             # Given search is ILIKE, using ILIKE here for consistency can be safer.
-            sql_query = """
-                SELECT * FROM api.top_projects
+            sql_query = f"""
+                SELECT * FROM {get_schema_name('api')}.top_projects
                 WHERE project_title ILIKE %s;
             """
             cur.execute(sql_query, (project_title,))
@@ -227,7 +226,7 @@ async def get_top_5_organizations_for_project(
             # 'project_title' in 'top_5_organizations_by_project' needs to match
             # the one from 'top_projects'.
             # the view already provides the "top 5" and is ordered,
-            sql_query = """
+            sql_query = f"""
                 SELECT
                     project_title,
                     project_organization_url,
@@ -235,7 +234,7 @@ async def get_top_5_organizations_for_project(
                     org_rank,
                     org_rank_category,
                     weighted_score_index
-                FROM api.top_5_organizations_by_project
+                FROM {get_schema_name('api')}.top_5_organizations_by_project
                 WHERE project_title ILIKE %s
                 ORDER BY org_rank ASC; -- Ensure they are ordered by rank
             """
@@ -294,7 +293,7 @@ async def get_project_repositories(
     db_sort_column = VALID_SORT_COLUMNS_REPOS.get(sort_by, "repo_rank") # Default sort
     db_sort_order = "ASC" if sort_order == "asc" else "DESC"
 
-    base_query = "FROM api.top_project_repos WHERE project_title ILIKE %(project_title)s"
+    base_query = f"FROM {get_schema_name('api')}.top_project_repos WHERE project_title ILIKE %(project_title)s"
     count_query_sql = f"SELECT COUNT(*) {base_query}"
     data_query_sql_select = f"SELECT project_title, latest_data_timestamp, repo, fork_count, stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, repo_rank_category {base_query}"
 
@@ -378,7 +377,7 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
     try:
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT 
                     project_title, 
                     report_date, 
@@ -398,7 +397,7 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
                     is_not_fork_ratio_pct_change_over_4_weeks, 
                     project_rank_category
 
-                FROM api.top_50_projects_trend;
+                FROM {get_schema_name('api')}.top_50_projects_trend;
             """) 
             results = cur.fetchall()
         return results
@@ -414,7 +413,7 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
 
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-             cur.execute("""
+             cur.execute(f"""
                 SELECT
                     project_title,
                     report_date,
@@ -433,7 +432,7 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
                     is_not_fork_ratio_pct_change_over_4_weeks, 
                     project_rank_category
 
-                FROM api.top_50_projects_trend 
+                FROM {get_schema_name('api')}.top_50_projects_trend 
                 WHERE project_title = %s;
              """, (project_title,))
              result = cur.fetchone()
@@ -475,7 +474,7 @@ async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(
     try:
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT 
                     contributor_login, 
                     is_anon, 
@@ -491,7 +490,7 @@ async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(
                     contributor_rank, 
                     latest_data_timestamp
 
-                FROM api.top_100_contributors;
+                FROM {get_schema_name('api')}.top_100_contributors;
             """) 
             results = cur.fetchall()
         return results
@@ -510,4 +509,34 @@ async def health_check():
     # but for a basic uptime check, just returning 200 is often enough.
     return {"status": "ok"}
 
-####################################################### health #######################################################
+####################################################### end health #######################################################
+
+
+####################################################### testing #######################################################
+
+# Pydantic Models (Data Validation) - top 100 contributors view
+class repo_count_test(BaseModel):
+    rec_count: int
+
+@app.get("/repos/count_test", response_model=List[repo_count_test])
+async def get_repo_count_test(db: psycopg2.extensions.connection = Depends(get_db_connection)):
+    """
+    Retrieves the count of repos from the api schema in postgres database.
+    """
+    if db is None: # Good check, though get_db_connection should raise exceptions
+         raise HTTPException(status_code=503, detail="Database not connected")
+    try:
+        # Use 'db' (the connection object) directly to get a cursor
+        with db.cursor() as cur:
+            cur.execute(f"""
+                SELECT 
+                    rec_count
+
+                FROM {get_schema_name('api')}.active_distinct_repo_count;
+            """) 
+            results = cur.fetchall()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+####################################################### end testing #######################################################

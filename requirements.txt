@@ -1,3 +1,4 @@
+pydantic-settings==2.8.1
 annotated-types==0.7.0
 anyio==4.9.0
 click==8.1.8
