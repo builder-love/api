@@ -3,6 +3,7 @@ from functools import lru_cache
 import os
 from dotenv import load_dotenv
 
+# Database settings class definition
 class Settings(BaseSettings):
     # Database settings
     DATABASE_HOST: str
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
+# get settings function 
 @lru_cache()
 def get_settings():
     # Load environment variables from .env file
