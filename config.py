@@ -32,6 +32,8 @@ def get_settings():
     
     # Determine environment
     env = os.getenv("ENV", "development")
+
+    print(f"Running in {env} environment")
     
     # Set schema suffix based on environment
     schema_suffix = "_stg" if env == "development" else ""
