@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     DATABASE_NAME: str
     
     # Environment
-    ENV: str = "development"
+    ENV: str = "production"
     
     # Schema prefix (empty for production, "_stg" for staging)
     SCHEMA_SUFFIX: str = ""
@@ -31,16 +31,17 @@ def get_settings():
     load_dotenv()
     
     # Determine environment
-    env = os.getenv("ENV", "development")
+    # default to production
+    env = os.getenv("ENV", "production")
+
+    if not os.getenv('ENV'):
+        print("Warning: cannot find ENV variable")
+        print("Default setting is production")
 
     print(f"Running in {env} environment")
-    if os.getenv('ENV') == "development":
-        print(f"this value is set using {os.getenv('ENV')}")
-    else:
-        print("Could not find ENV variable - this must not be development")
     
     # Set schema suffix based on environment
-    schema_suffix = "_stg" if env == "development" else ""
+    schema_suffix = "_stg" if env == "staging" else ""
     
     # Create settings with environment-specific values
     return Settings(
