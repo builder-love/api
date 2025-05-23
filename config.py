@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 # get settings function 
+# making comment for testing
 @lru_cache()
 def get_settings():
     # Load environment variables from .env file
