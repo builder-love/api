@@ -85,6 +85,36 @@ class project_metrics(BaseModel):
     weighted_score_sma: Optional[float]
     prior_4_weeks_weighted_score: Optional[float]
 
+# Pydantic Models (Data Validation) - all projects view
+class project_trend(BaseModel):
+    project_title: str
+    report_date: str
+    latest_data_timestamp: str
+    contributor_count: Optional[int]
+    contributor_count_pct_change_over_4_weeks: Optional[float]
+    repo_count: Optional[int]
+    fork_count: Optional[int]
+    fork_count_pct_change_over_4_weeks: Optional[float]
+    fork_count_rank: Optional[int]
+    fork_count_pct_change_over_4_weeks_rank: Optional[int]
+    stargaze_count: Optional[int]
+    stargaze_count_pct_change_over_4_weeks: Optional[float]
+    stargaze_count_rank: Optional[int]
+    stargaze_count_pct_change_over_4_weeks_rank: Optional[int]
+    commit_count: Optional[int]
+    commit_count_pct_change_over_4_weeks: Optional[float]
+    commit_count_rank: Optional[int]
+    commit_count_pct_change_over_4_weeks_rank: Optional[int]
+    watcher_count: Optional[int]
+    watcher_count_pct_change_over_4_weeks: Optional[float]
+    watcher_count_rank: Optional[int]
+    watcher_count_pct_change_over_4_weeks_rank: Optional[int]
+    is_not_fork_ratio: Optional[float]
+    is_not_fork_ratio_pct_change_over_4_weeks: Optional[float]
+    is_not_fork_ratio_rank: Optional[int]
+    is_not_fork_ratio_pct_change_over_4_weeks_rank: Optional[int]
+    project_rank_rank: Optional[int]
+
 # Pydantic Model for Organization Data
 class ProjectOrganization(BaseModel):
     project_title: Optional[str] 
@@ -288,7 +318,7 @@ async def get_project_repositories(
 ):
     """
     Retrieves paginated, searchable, and sortable repository details for a specific project
-    from api.top_project_repos view.
+    from api.top_projects_repos view.
     """
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
@@ -305,7 +335,7 @@ async def get_project_repositories(
     db_sort_column = VALID_SORT_COLUMNS_REPOS.get(sort_by, "repo_rank") # Default sort
     db_sort_order = "ASC" if sort_order == "asc" else "DESC"
 
-    base_query = f"FROM {get_schema_name('api')}.top_project_repos WHERE project_title ILIKE %(project_title)s"
+    base_query = f"FROM {get_schema_name('api')}.top_projects_repos WHERE project_title ILIKE %(project_title)s"
     count_query_sql = f"SELECT COUNT(*) {base_query}"
     data_query_sql_select = f"SELECT project_title, latest_data_timestamp, repo, fork_count, stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, repo_rank_category {base_query}"
 
