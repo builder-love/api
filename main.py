@@ -145,7 +145,7 @@ class PaginatedRepoResponse(BaseModel):
     total_pages: int
 
 #######################################################
-# New Endpoints for Project Search & Details from 'top_projects'
+# Endpoint for Project Search from 'top_projects'
 #######################################################
 
 @app.get("/api/projects/search_top_projects", response_model=List[project_metrics], dependencies=[Depends(get_api_key)])
@@ -197,6 +197,10 @@ async def search_top_projects_by_title(
         print(f"Unexpected error during project search: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
+#######################################################
+# Endpoint for Project details from 'top_projects'
+#######################################################
+
 @app.get("/api/projects/details_from_top_projects/{project_title_url_encoded}", response_model=project_metrics, dependencies=[Depends(get_api_key)])
 async def get_single_project_details_from_top_projects(
     project_title_url_encoded: str,
@@ -240,6 +244,53 @@ async def get_single_project_details_from_top_projects(
         print(f"Unexpected error fetching project '{project_title}': {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
+#######################################################
+# Endpoint for Project trends from 'top_projects_trends'
+#######################################################
+
+@app.get("/api/projects/trends_from_top_projects/{project_title_url_encoded}", response_model=project_trend, dependencies=[Depends(get_api_key)])
+async def get_project_trends_from_top_projects(
+    project_title_url_encoded: str,
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
+    """
+    Retrieves the full trends for a single project from the 'top_projects_trends' view
+    by its URL-encoded project_title.
+    Uses a case-insensitive match for project_title.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+
+    try:
+        # URL decode the project title
+        project_title = urllib.parse.unquote(project_title_url_encoded)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
+
+    try:
+        with db.cursor() as cur:
+            # It's safer to use ILIKE if the exact casing isn't guaranteed or if names
+            # fetched from search (which is ILIKE) are used directly for lookup.
+            # However, if project_title is a strict unique key, '=' might be preferred.
+            # Given search is ILIKE, using ILIKE here for consistency can be safer.
+            sql_query = f"""
+                SELECT * FROM {get_schema_name('api')}.top_projects_trends
+                WHERE project_title ILIKE %s;
+            """
+            cur.execute(sql_query, (project_title,))
+            result = cur.fetchone()
+            if not result:
+                raise HTTPException(status_code=404, detail=f"Project '{project_title}' not found in top_projects_trends.")
+        return result
+    except HTTPException: # Re-raise 404 if already raised
+        raise
+    except psycopg2.Error as e:
+        print(f"Database error fetching project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
+    except Exception as e:
+        print(f"Unexpected error fetching project '{project_title}': {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+    
 
 #######################################################
 # Project-specific Organization Data
@@ -263,7 +314,7 @@ async def get_top_5_organizations_for_project(
     try:
         project_title = urllib.parse.unquote(project_title_url_encoded)
         print(f"URL encoded project title value resolved to: {project_title}\n")
-        
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
 
