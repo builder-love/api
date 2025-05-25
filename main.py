@@ -91,7 +91,9 @@ class project_trend(BaseModel):
     report_date: str
     latest_data_timestamp: str
     contributor_count: Optional[int]
+    contributor_count_rank: Optional[int]
     contributor_count_pct_change_over_4_weeks: Optional[float]
+    contributor_count_pct_change_over_4_weeks_rank: Optional[int]
     repo_count: Optional[int]
     fork_count: Optional[int]
     fork_count_pct_change_over_4_weeks: Optional[float]
@@ -249,7 +251,7 @@ async def get_single_project_details_from_top_projects(
 # Endpoint for Project trends from 'top_projects_trends'
 #######################################################
 
-@app.get("/api/projects/trends_from_top_projects/{project_title_url_encoded}", response_model=project_trend, dependencies=[Depends(get_api_key)])
+@app.get("/api/projects/trends_from_top_projects/{project_title_url_encoded}", response_model=List[project_trend], dependencies=[Depends(get_api_key)])
 async def get_project_trends_from_top_projects(
     project_title_url_encoded: str,
     db: psycopg2.extensions.connection = Depends(get_db_connection)
@@ -276,13 +278,15 @@ async def get_project_trends_from_top_projects(
             # Given search is ILIKE, using ILIKE here for consistency can be safer.
             sql_query = f"""
                 SELECT * FROM {get_schema_name('api')}.top_projects_trends
-                WHERE project_title ILIKE %s;
+                WHERE project_title ILIKE %s
+                ORDER BY report_date DESC;
             """
             cur.execute(sql_query, (project_title,))
-            result = cur.fetchone()
-            if not result:
-                raise HTTPException(status_code=404, detail=f"Project '{project_title}' not found in top_projects_trends.")
-        return result
+            results = cur.fetchall()
+            if not results:
+                return []
+                # raise HTTPException(status_code=404, detail=f"Project '{project_title}' not found in top_projects_trends.")
+        return results
     except HTTPException: # Re-raise 404 if already raised
         raise
     except psycopg2.Error as e:
