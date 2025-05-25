@@ -113,7 +113,8 @@ class project_trend(BaseModel):
     is_not_fork_ratio_pct_change_over_4_weeks: Optional[float]
     is_not_fork_ratio_rank: Optional[int]
     is_not_fork_ratio_pct_change_over_4_weeks_rank: Optional[int]
-    project_rank_rank: Optional[int]
+    quartile_project_rank: Optional[int]
+    overall_project_rank: Optional[int]
 
 # Pydantic Model for Organization Data
 class ProjectOrganization(BaseModel):
