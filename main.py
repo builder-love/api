@@ -255,11 +255,15 @@ async def get_top_5_organizations_for_project(
     from the 'top_5_organizations_by_project' view, based on its URL-encoded project_title.
     Matches project_title case-insensitively.
     """
+    print(f"Getting top 5 organizations for project: {project_title_url_encoded}\n")
+
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
     try:
         project_title = urllib.parse.unquote(project_title_url_encoded)
+        print(f"URL encoded project title value resolved to: {project_title}\n")
+        
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
 
