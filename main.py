@@ -248,7 +248,7 @@ async def get_single_project_details_from_top_projects(
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
 #######################################################
-# Endpoint for Project trends from 'top_projects_trends'
+# Endpoint for Project trends from 'top_projects_trend'
 #######################################################
 
 @app.get("/api/projects/trends_from_top_projects/{project_title_url_encoded}", response_model=List[project_trend], dependencies=[Depends(get_api_key)])
@@ -257,7 +257,7 @@ async def get_project_trends_from_top_projects(
     db: psycopg2.extensions.connection = Depends(get_db_connection)
 ):
     """
-    Retrieves the full trends for a single project from the 'top_projects_trends' view
+    Retrieves the full trends for a single project from the 'top_projects_trend' view
     by its URL-encoded project_title.
     Uses a case-insensitive match for project_title.
     """
@@ -277,7 +277,7 @@ async def get_project_trends_from_top_projects(
             # However, if project_title is a strict unique key, '=' might be preferred.
             # Given search is ILIKE, using ILIKE here for consistency can be safer.
             sql_query = f"""
-                SELECT * FROM {get_schema_name('api')}.top_projects_trends
+                SELECT * FROM {get_schema_name('api')}.top_projects_trend
                 WHERE project_title ILIKE %s
                 ORDER BY report_date DESC;
             """
@@ -285,7 +285,7 @@ async def get_project_trends_from_top_projects(
             results = cur.fetchall()
             if not results:
                 return []
-                # raise HTTPException(status_code=404, detail=f"Project '{project_title}' not found in top_projects_trends.")
+                # raise HTTPException(status_code=404, detail=f"Project '{project_title}' not found in top_projects_trend.")
         return results
     except HTTPException: # Re-raise 404 if already raised
         raise
