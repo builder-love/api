@@ -548,8 +548,12 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
 
 ####################################################### end top 50 projects trend #######################################################
 
-####################################################### top 100 contributors #######################################################
+####################################################### contributors #######################################################
 
+
+###############################
+## top 100 contributors
+###############################
 # Pydantic Models (Data Validation) - top 100 contributors view
 class top_100_contributors(BaseModel):
     contributor_login: str
@@ -599,8 +603,40 @@ async def get_top_100_contributors(db: psycopg2.extensions.connection = Depends(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+###########################################
+## count of contributors by language trend
+###########################################
+# Pydantic Models (Data Validation) - count of contributors by language trend view
+class count_of_contributors_by_language_trend(BaseModel):
+    dominant_language: str
+    developer_count: int
+    latest_data_timestamp: str
 
-####################################################### end top 100 contributors #######################################################
+@app.get("/contributors/language_trend", response_model=List[count_of_contributors_by_language_trend], dependencies=[Depends(get_api_key)])
+async def get_count_of_contributors_by_language_trend(db: psycopg2.extensions.connection = Depends(get_db_connection)):
+    """
+    Retrieves the count of contributors by language trend from the api schema in postgres database.
+    """
+    if db is None: # Good check, though get_db_connection should raise exceptions
+         raise HTTPException(status_code=503, detail="Database not connected")
+    try:
+        # Use 'db' (the connection object) directly to get a cursor
+        with db.cursor() as cur:
+            cur.execute(f"""
+                SELECT 
+                    dominant_language,
+                    developer_count,
+                    latest_data_timestamp
+
+                FROM {get_schema_name('api')}.contributor_count_by_language;
+            """) 
+            results = cur.fetchall()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+####################################################### end contributors #######################################################
 
 ####################################################### health #######################################################
 
