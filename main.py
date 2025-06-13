@@ -363,7 +363,10 @@ VALID_SORT_COLUMNS_REPOS = {
     "stargaze_count": "stargaze_count",
     "watcher_count": "watcher_count",
     "repo_rank": "repo_rank",
-    "repo_rank_category": "repo_rank_category"
+    "repo_rank_category": "repo_rank_category",
+    "predicted_is_dev_tooling": "predicted_is_dev_tooling",
+    "predicted_is_educational": "predicted_is_educational",
+    "predicted_is_scaffold": "predicted_is_scaffold"
 }
 
 @app.get("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
@@ -397,7 +400,7 @@ async def get_project_repositories(
 
     base_query = f"FROM {get_schema_name('api')}.top_projects_repos WHERE project_title ILIKE %(project_title)s"
     count_query_sql = f"SELECT COUNT(*) {base_query}"
-    data_query_sql_select = f"SELECT project_title, latest_data_timestamp, repo, fork_count, stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, repo_rank_category {base_query}"
+    data_query_sql_select = f"SELECT project_title, latest_data_timestamp, repo, fork_count, stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, repo_rank_category, predicted_is_dev_tooling, predicted_is_educational, predicted_is_scaffold {base_query}"
 
     params = {"project_title": project_title}
 
