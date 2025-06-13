@@ -139,6 +139,9 @@ class RepoDetail(BaseModel):
     repo_rank: Optional[int] 
     quartile_bucket: Optional[int]
     repo_rank_category: Optional[str]
+    predicted_is_dev_tooling: Optional[bool]
+    predicted_is_educational: Optional[bool]
+    predicted_is_scaffold: Optional[bool]
 
 class PaginatedRepoResponse(BaseModel):
     items: List[RepoDetail]
