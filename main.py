@@ -152,6 +152,115 @@ class PaginatedRepoResponse(BaseModel):
     limit: int
     total_pages: int
 
+class ProjectOutliers(BaseModel):
+    project_title: str
+    latest_data_timestamp: str
+    pct_change: Optional[float]
+    current_value: Optional[int]
+    previous_value: Optional[int]
+
+#######################################################
+# Endpoint for Project outliers
+#######################################################
+
+# Map the public API parameter to the actual, safe database column names
+# This is a critical security step to prevent SQL injection
+METRIC_MAP = {
+    "fork_count": {
+        "pct_change_col": "fork_count_pct_change_over_4_weeks",
+        "current_col": "current_fork_count",
+        "previous_col": "previous_fork_count"
+    },
+    "commit_count": {
+        "pct_change_col": "commit_count_pct_change_over_4_weeks",
+        "current_col": "current_commit_count",
+        "previous_col": "previous_commit_count"
+    },
+    "stargaze_count": {
+        "pct_change_col": "stargaze_count_pct_change_over_4_weeks",
+        "current_col": "current_stargaze_count",
+        "previous_col": "previous_stargaze_count"
+    },
+    "watcher_count": {
+        "pct_change_col": "watcher_count_pct_change_over_4_weeks",
+        "current_col": "current_watcher_count",
+        "previous_col": "previous_watcher_count"
+    },
+    "is_not_fork_ratio": {
+        "pct_change_col": "is_not_fork_ratio_pct_change_over_4_weeks",
+        "current_col": "current_is_not_fork_ratio",
+        "previous_col": "previous_is_not_fork_ratio"
+    },
+    "contributor_count": {
+        "pct_change_col": "contributor_count_pct_change_over_4_weeks",
+        "current_col": "current_contributor_count",
+        "previous_col": "previous_contributor_count"
+    },
+    "repo_count": {
+        "pct_change_col": "repo_count_pct_change_over_4_weeks",
+        "current_col": "current_repo_count",
+        "previous_col": "previous_repo_count"
+    },
+}
+
+@app.get("/projects/outliers", response_model=List[ProjectOutliers], dependencies=[Depends(get_api_key)])
+async def get_project_outliers(
+    limit: int = Query(10, ge=1, le=100, description="Maximum number of results to return"),
+    metric: str = Query(..., description="The metric to rank by (e.g., 'fork_count')"),
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
+    """
+    Dynamically builds a query to return outlier metrics for the respecitve outlier leaderboards for projects in the 'project_outliers' view.
+    Returns a list of matching projects.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+    
+    # Validate the incoming metric parameter
+    if metric not in METRIC_MAP:
+        raise HTTPException(status_code=400, detail="Invalid metric specified")
+    
+    # Get the safe column names from the map
+    selected_metric = METRIC_MAP[metric]
+    pct_change_col = selected_metric["pct_change_col"]
+    current_col = selected_metric["current_col"]
+    previous_col = selected_metric["previous_col"]
+    
+    try:
+        with db.cursor() as cur:
+            # Build the query dynamically based on the limit parameter
+            query = f"""
+                        SELECT
+                            project_title,
+                            latest_data_timestamp,
+                            {pct_change_col} AS pct_change,
+                            {current_col} AS current_value,
+                            {previous_col} AS previous_value
+
+                        FROM
+                            {get_schema_name('api')}.project_outliers
+                        WHERE
+                            {pct_change_col} IS NOT NULL
+                        ORDER BY
+                            {pct_change_col} DESC
+                        LIMIT {limit};
+                    """
+
+            # execute the query and return the results
+            cur.execute(query)
+            results = cur.fetchall()
+
+            if not results:
+                raise HTTPException(status_code=404, detail=f"No results found when querying for {metric} project outliers.")
+            
+        return results
+    except psycopg2.Error as e:
+        print(f"Database error during project search: {e}")
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
+    except Exception as e:
+        print(f"Unexpected error during project search: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
 #######################################################
 # Endpoint for Project Search from 'top_projects'
 #######################################################
