@@ -245,7 +245,7 @@ async def get_project_outliers(
                             {pct_change_col} DESC
                         LIMIT {limit};
                     """
-
+            print(f"Executing query: {query}")
             # execute the query and return the results
             cur.execute(query)
             results = cur.fetchall()
@@ -254,6 +254,9 @@ async def get_project_outliers(
                 raise HTTPException(status_code=404, detail=f"No results found when querying for {metric} project outliers.")
             
         return results
+    except HTTPException as http_exc:
+        # This will catch the 404 if not results, and let it pass through directly
+        raise http_exc
     except psycopg2.Error as e:
         print(f"Database error during project search: {e}")
         raise HTTPException(status_code=500, detail=f"Database query error: {e}")
