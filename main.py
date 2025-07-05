@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError
-from typing import List, Optional
+from typing import List, Optional, Union
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -156,8 +156,8 @@ class ProjectOutliers(BaseModel):
     project_title: str
     report_date: str
     pct_change: Optional[float]
-    current_value: Optional[int]
-    previous_value: Optional[int]
+    current_value: Optional[Union[int, float]]
+    previous_value: Optional[Union[int, float]]
 
 #######################################################
 # Endpoint for Project outliers
@@ -245,7 +245,7 @@ async def get_project_outliers(
                             {pct_change_col} DESC
                         LIMIT {limit};
                     """
-            print(f"Executing query: {query}")
+            # print(f"Executing query: {query}")
             # execute the query and return the results
             cur.execute(query)
             results = cur.fetchall()
