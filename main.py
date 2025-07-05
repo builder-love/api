@@ -154,7 +154,7 @@ class PaginatedRepoResponse(BaseModel):
 
 class ProjectOutliers(BaseModel):
     project_title: str
-    latest_data_timestamp: str
+    report_date: str
     pct_change: Optional[float]
     current_value: Optional[int]
     previous_value: Optional[int]
@@ -232,7 +232,7 @@ async def get_project_outliers(
             query = f"""
                         SELECT
                             project_title,
-                            latest_data_timestamp,
+                            report_date,
                             {pct_change_col} AS pct_change,
                             {current_col} AS current_value,
                             {previous_col} AS previous_value
