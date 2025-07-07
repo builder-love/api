@@ -330,15 +330,30 @@ async def search_top_projects_by_title(
 @app.get("/api/projects/details_from_top_projects/{project_title_url_encoded}", response_model=project_metrics, dependencies=[Depends(get_api_key)])
 async def get_single_project_details_from_top_projects(
     project_title_url_encoded: str,
+    include_forks: bool = Query(False, description="Set to true to include history from forked repos"),
     db: psycopg2.extensions.connection = Depends(get_db_connection)
 ):
     """
     Retrieves the full details for a single project from the 'top_projects' view
     by its URL-encoded project_title.
     Uses a case-insensitive match for project_title.
+    Retrieves the full details for a single project from either 'top_projects' or
+    'top_projects_no_forks' view depending on the 'include_forks' parameter.
     """
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
+    
+    # confirm include_forks exists and is a boolean
+    if include_forks is not None and not isinstance(include_forks, bool):
+        raise HTTPException(status_code=400, detail="include_forks must be a boolean")
+    
+    # Dynamically select the view name based on the parameter
+    # Default (include_forks=False) uses no forks view
+    table_name = (
+        f"{get_schema_name('api')}.top_projects"
+        if include_forks
+        else f"{get_schema_name('api')}.top_projects_no_forks"
+    )
 
     try:
         # URL decode the project title
@@ -353,7 +368,7 @@ async def get_single_project_details_from_top_projects(
             # However, if project_title is a strict unique key, '=' might be preferred.
             # Given search is ILIKE, using ILIKE here for consistency can be safer.
             sql_query = f"""
-                SELECT * FROM {get_schema_name('api')}.top_projects
+                SELECT * FROM {table_name}
                 WHERE project_title ILIKE %s;
             """
             cur.execute(sql_query, (project_title,))
@@ -395,6 +410,10 @@ async def get_project_trends_from_top_projects(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
 
+    # confirm include_forks exists and is a boolean
+    if include_forks is not None and not isinstance(include_forks, bool):
+        raise HTTPException(status_code=400, detail="include_forks must be a boolean")
+    
     # Dynamically select the view name based on the parameter
     # Default (include_forks=False) uses no forks view
     table_name = (
