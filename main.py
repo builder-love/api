@@ -207,6 +207,7 @@ METRIC_MAP = {
 async def get_project_outliers(
     limit: int = Query(10, ge=1, le=100, description="Maximum number of results to return"),
     metric: str = Query(..., description="The metric to rank by (e.g., 'fork_count')"),
+    include_forks: bool = Query(False, description="Set to true to include history from forked repos for commits and contributors"),
     db: psycopg2.extensions.connection = Depends(get_db_connection)
 ):
     """
@@ -225,6 +226,11 @@ async def get_project_outliers(
     pct_change_col = selected_metric["pct_change_col"]
     current_col = selected_metric["current_col"]
     previous_col = selected_metric["previous_col"]
+
+    # Dynamically select the table based on the include_forks parameter
+    table_name = f"{get_schema_name('api')}.project_outliers"
+    if metric in ["commit_count", "contributor_count"] and not include_forks:
+        table_name = f"{get_schema_name('api')}.project_outliers_no_forks"
     
     try:
         with db.cursor() as cur:
@@ -238,7 +244,7 @@ async def get_project_outliers(
                             {previous_col} AS previous_value
 
                         FROM
-                            {get_schema_name('api')}.project_outliers
+                            {table_name}
                         WHERE
                             {pct_change_col} IS NOT NULL
                         ORDER BY
