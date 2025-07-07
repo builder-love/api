@@ -377,12 +377,14 @@ async def get_single_project_details_from_top_projects(
 @app.get("/api/projects/trends_from_top_projects/{project_title_url_encoded}", response_model=List[project_trend], dependencies=[Depends(get_api_key)])
 async def get_project_trends_from_top_projects(
     project_title_url_encoded: str,
+    include_forks: bool = Query(False, description="Set to true to include history from forked repos"),
     db: psycopg2.extensions.connection = Depends(get_db_connection)
 ):
     """
     Retrieves the full trends for a single project from the 'top_projects_trend' view
     by its URL-encoded project_title.
     Uses a case-insensitive match for project_title.
+    The view queried depends on 'include_forks'.
     """
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
@@ -393,6 +395,14 @@ async def get_project_trends_from_top_projects(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
 
+    # Dynamically select the view name based on the parameter
+    # Default (include_forks=False) uses no forks view
+    table_name = (
+        f"{get_schema_name('api')}.top_projects_trend"
+        if include_forks
+        else f"{get_schema_name('api')}.top_projects_trend_no_forks"
+    )
+
     try:
         with db.cursor() as cur:
             # It's safer to use ILIKE if the exact casing isn't guaranteed or if names
@@ -400,7 +410,7 @@ async def get_project_trends_from_top_projects(
             # However, if project_title is a strict unique key, '=' might be preferred.
             # Given search is ILIKE, using ILIKE here for consistency can be safer.
             sql_query = f"""
-                SELECT * FROM {get_schema_name('api')}.top_projects_trend
+                SELECT * FROM {table_name}
                 WHERE project_title ILIKE %s
                 ORDER BY report_date DESC;
             """
