@@ -251,7 +251,7 @@ async def get_project_outliers(
                             {pct_change_col} DESC
                         LIMIT {limit};
                     """
-            # print(f"Executing query: {query}")
+            print(f"Executing query: {query}")
             # execute the query and return the results
             cur.execute(query)
             results = cur.fetchall()
