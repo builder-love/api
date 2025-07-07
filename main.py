@@ -625,12 +625,28 @@ class top_50_projects_trend(BaseModel):
     project_rank_category: str
 
 @app.get("/projects/top50-trend", response_model=List[top_50_projects_trend], dependencies=[Depends(get_api_key)])
-async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_connection)):
+async def get_top_50_trend(
+        include_forks: bool = Query(False, description="Set to true to include history from forked repos"),
+        db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
     """
     Retrieves the top 50 projects by weighted score index from the api schema in postgres database.
     """
     if db is None: # Good check, though get_db_connection should raise exceptions
          raise HTTPException(status_code=503, detail="Database not connected")
+    
+    # confirm include_forks exists and is a boolean
+    if include_forks is not None and not isinstance(include_forks, bool):
+        raise HTTPException(status_code=400, detail="include_forks must be a boolean")
+    
+    # Dynamically select the view name based on the parameter
+    # Default (include_forks=False) uses no forks view
+    table_name = (
+        f"{get_schema_name('api')}.top_50_projects_trend"
+        if include_forks
+        else f"{get_schema_name('api')}.top_50_projects_trend_no_forks"
+    )
+
     try:
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
@@ -654,7 +670,7 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
                     is_not_fork_ratio_pct_change_over_4_weeks, 
                     project_rank_category
 
-                FROM {get_schema_name('api')}.top_50_projects_trend;
+                FROM {table_name};
             """) 
             results = cur.fetchall()
         return results
@@ -662,11 +678,27 @@ async def get_top_50_trend(db: psycopg2.extensions.connection = Depends(get_db_c
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/projects/top50-trend/{project_title}", response_model=top_50_projects_trend, dependencies=[Depends(get_api_key)])
-async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.connection = Depends(get_db_connection)):
+async def get_top_50_trend_project(
+    project_title: str, 
+    include_forks: bool = Query(False, description="Set to true to include history from forked repos"),
+    db: psycopg2.extensions.connection = Depends(get_db_connection)
+):
      """Retrieves a single project by project_title."""
      try:
         if db is None: # Good check, though get_db_connection should raise exceptions
             raise HTTPException(status_code=503, detail="Database not connected")
+
+        # confirm include_forks exists and is a boolean
+        if include_forks is not None and not isinstance(include_forks, bool):
+            raise HTTPException(status_code=400, detail="include_forks must be a boolean")
+        
+        # Dynamically select the view name based on the parameter
+        # Default (include_forks=False) uses no forks view
+        table_name = (
+            f"{get_schema_name('api')}.top_50_projects_trend"
+            if include_forks
+            else f"{get_schema_name('api')}.top_50_projects_trend_no_forks"
+        )
 
         # Use 'db' (the connection object) directly to get a cursor
         with db.cursor() as cur:
@@ -689,7 +721,7 @@ async def get_top_50_trend_project(project_title: str, db: psycopg2.extensions.c
                     is_not_fork_ratio_pct_change_over_4_weeks, 
                     project_rank_category
 
-                FROM {get_schema_name('api')}.top_50_projects_trend 
+                FROM {table_name}
                 WHERE project_title = %s;
              """, (project_title,))
              result = cur.fetchone()
