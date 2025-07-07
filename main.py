@@ -229,6 +229,7 @@ async def get_project_outliers(
 
     # Dynamically select the table based on the include_forks parameter
     table_name = f"{get_schema_name('api')}.project_outliers"
+    print(f"the current metric is {metric}")
     if metric in ["commit_count", "contributor_count"] and not include_forks:
         table_name = f"{get_schema_name('api')}.project_outliers_no_forks"
     
