@@ -130,6 +130,7 @@ class ProjectOrganization(BaseModel):
 # Pydantic Model for Repository Details
 class RepoDetail(BaseModel):
     project_title: Optional[str]
+    first_seen_timestamp: Optional[str]
     latest_data_timestamp: Optional[str]
     repo: Optional[str] 
     fork_count: Optional[int]
@@ -511,6 +512,7 @@ async def get_top_5_organizations_for_project(
 # Whitelist of columns that can be sorted to prevent SQL injection
 VALID_SORT_COLUMNS_REPOS = {
     "repo": "repo",
+    "first_seen_timestamp": "first_seen_timestamp",
     "fork_count": "fork_count",
     "stargaze_count": "stargaze_count",
     "watcher_count": "watcher_count",
