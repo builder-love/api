@@ -823,6 +823,29 @@ async def get_count_of_contributors_by_language_trend(db: psycopg2.extensions.co
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/contributors/language_trend/top1000", response_model=List[count_of_contributors_by_language_trend], dependencies=[Depends(get_api_key)])
+async def get_count_of_contributors_by_language_trend_top1000(db: psycopg2.extensions.connection = Depends(get_db_connection)):
+    """
+    Retrieves the count of contributors by language trend from the api schema in postgres database. Filtered to top 1000 contributors.
+    """
+    if db is None: # Good check, though get_db_connection should raise exceptions
+         raise HTTPException(status_code=503, detail="Database not connected")
+    try:
+        # Use 'db' (the connection object) directly to get a cursor
+        with db.cursor() as cur:
+            cur.execute(f"""
+                SELECT 
+                    dominant_language,
+                    developer_count,
+                    latest_data_timestamp
+
+                FROM {get_schema_name('api')}.top_1000_contributor_count_by_language;
+            """) 
+            results = cur.fetchall()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
 
 ####################################################### end contributors #######################################################
