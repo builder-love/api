@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     DATABASE_USER: str
     DATABASE_PASSWORD: str
     DATABASE_NAME: str
+
+    # GCE embedding service settings
+    GCE_EMBED_URL: str
     
     # Environment
     ENV: str = "production"
