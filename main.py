@@ -687,6 +687,19 @@ async def get_project_repositories_with_semantic_filter(
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
+
+                # ---- START: DIAGNOSTIC LOGGING ----
+                # Add this block to inspect the data before it's returned.
+                print("--- Starting Diagnostic Logging ---")
+                if items:
+                    # Inspect the first item in the list
+                    first_item = items[0]
+                    print("Inspecting data types of the first item:")
+                    for key, value in first_item.items():
+                        print(f"  - Key: '{key}', Value: '{value}', Type: {type(value)}")
+                else:
+                    print("No items were fetched from the database.")
+                print("--- End of Diagnostic Logging ---")
             
         total_pages = (total_items + payload.limit - 1) // payload.limit
 
@@ -702,7 +715,6 @@ async def get_project_repositories_with_semantic_filter(
                 "fork_count": int(item_dict.get("fork_count")) if item_dict.get("fork_count") is not None else None,
                 "stargaze_count": int(item_dict.get("stargaze_count")) if item_dict.get("stargaze_count") is not None else None,
                 "watcher_count": int(item_dict.get("watcher_count")) if item_dict.get("watcher_count") is not None else None,
-                # This is the most likely culprit, casting Decimal to float
                 "weighted_score_index": float(item_dict.get("weighted_score_index")) if item_dict.get("weighted_score_index") is not None else None,
                 "repo_rank": int(item_dict.get("repo_rank")) if item_dict.get("repo_rank") is not None else None,
                 "quartile_bucket": int(item_dict.get("quartile_bucket")) if item_dict.get("quartile_bucket") is not None else None,
