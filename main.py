@@ -624,7 +624,7 @@ async def get_project_repositories_with_semantic_filter(
             params = {"embedding": np.array(embedding), "project_title": project_title}
             # print the query with the embedding to the log
             full_sql_query = cur.mogrify(query, params).decode('utf-8')
-            print(f"Executing Query:\n{full_sql_query}\n")
+            print(f"Executing Query:\n{full_sql_query.replace('\n', ' ')}\n")
 
 
             cur.execute(query, {"embedding": np.array(embedding), "project_title": project_title})
