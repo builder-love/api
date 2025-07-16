@@ -609,7 +609,7 @@ async def get_project_repositories_with_semantic_filter(
         # Use the embedding to get repo URLs from the database
         with db.cursor() as cur:
             query = f"""
-                SELECT repo FROM {get_schema_name('api')}.latest_project_repo_corpus_embeddings
+                SELECT repo FROM {get_schema_name('api')}.project_repo_embeddings
                 ORDER BY corpus_embedding <=> %(embedding)s
                 LIMIT 100;
             """
