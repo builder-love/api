@@ -691,13 +691,13 @@ async def get_project_repositories_with_semantic_filter(
         total_pages = (total_items + payload.limit - 1) // payload.limit
 
         # Return the final paginated response using values from the payload.
-        return {
-            "items": items,
-            "total_items": total_items,
-            "page": payload.page,
-            "limit": payload.limit,
-            "total_pages": total_pages
-        }
+        return PaginatedRepoResponse(
+            items=items,
+            total_items=total_items,
+            page=payload.page,
+            limit=payload.limit,
+            total_pages=total_pages
+        )
     except psycopg2.Error as e:
         print(f"Database error fetching repositories for project '{project_title}': {e}")
         raise HTTPException(status_code=500, detail="Database query error while fetching repositories.")
