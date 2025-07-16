@@ -630,6 +630,7 @@ async def get_project_repositories_with_semantic_filter(
             cur.execute(query, {"embedding": np.array(embedding), "project_title": project_title})
             results = cur.fetchall()
             repo_list_for_filter = [row['repo'] for row in results]
+            print(f"Repo list for filter: {repo_list_for_filter}")
 
         # If semantic search returned no results, we can stop here.
         if not repo_list_for_filter:
