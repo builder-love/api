@@ -623,7 +623,8 @@ async def get_project_repositories_with_semantic_filter(
 
                 select repo 
                 from project_repo_embeddings
-                ORDER BY corpus_embedding <=> %(embedding)s;
+                ORDER BY corpus_embedding <=> %(embedding)s
+                limit 10;
             """
             params = {"embedding": np.array(embedding), "project_title": project_title}
             # print the query with the embedding to the log
