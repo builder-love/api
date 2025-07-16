@@ -613,8 +613,15 @@ async def get_project_repositories_with_semantic_filter(
                 ORDER BY corpus_embedding <=> %(embedding)s
                 LIMIT 100;
             """
-            print(f"Query: {query}")
-            cur.execute(query, {"embedding": np.array(embedding)})
+            params = {"embedding": np.array(embedding)}
+
+            # Use mogrify to render the full query for logging.
+            # .decode() is needed because mogrify returns bytes, not a string.
+            full_sql_query = cur.mogrify(query, params).decode('utf-8')
+            print(f"Executing Query:\n{full_sql_query}\n")
+
+            # Now execute the query with the original template and params
+            cur.execute(query, params)
             results = cur.fetchall()
             repo_list_for_filter = [row['repo'] for row in results]
 
