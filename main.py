@@ -677,6 +677,8 @@ async def get_project_repositories_with_semantic_filter(
 
             items = []
             if total_items > 0:
+                print(f"Total items: {total_items}")
+                print(f"Executing Data Query:\n{data_query_sql.replace('\n', ' ')}\n")
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
