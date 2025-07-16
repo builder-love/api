@@ -610,14 +610,19 @@ async def get_project_repositories_with_semantic_filter(
         with db.cursor() as cur:
             query = f"""
                 with project_repos as (
-                select distinct
-                    repo
-                from {get_schema_name('api')}.top_projects_repos
-                where project_title ILIKE %(project_title)s
+                    select distinct
+                        repo
+                    from {get_schema_name('api')}.top_projects_repos
+                    where project_title ILIKE %(project_title)s
+                ),
+                project_repo_embeddings as (
+                    SELECT repo, corpus_embedding
+                    FROM {get_schema_name('api')}.project_repo_embeddings
+                    where repo in (select repo from project_repos)
                 )
-                SELECT repo 
-                FROM {get_schema_name('api')}.project_repo_embeddings
-                where repo in (select repo from project_repos)
+
+                select repo 
+                from project_repo_embeddings
                 ORDER BY corpus_embedding <=> %(embedding)s
                 LIMIT 100;
             """
