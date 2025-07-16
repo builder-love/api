@@ -690,9 +690,33 @@ async def get_project_repositories_with_semantic_filter(
             
         total_pages = (total_items + payload.limit - 1) // payload.limit
 
+        # Rebuild the items list to ensure all data types are JSON serializable
+        # This handles potential issues like Decimal types from the database.
+        cleaned_items = []
+        for item_dict in items:
+            cleaned_items.append({
+                "project_title": str(item_dict.get("project_title")) if item_dict.get("project_title") is not None else None,
+                "first_seen_timestamp": str(item_dict.get("first_seen_timestamp")) if item_dict.get("first_seen_timestamp") is not None else None,
+                "latest_data_timestamp": str(item_dict.get("latest_data_timestamp")) if item_dict.get("latest_data_timestamp") is not None else None,
+                "repo": str(item_dict.get("repo")) if item_dict.get("repo") is not None else None,
+                "fork_count": int(item_dict.get("fork_count")) if item_dict.get("fork_count") is not None else None,
+                "stargaze_count": int(item_dict.get("stargaze_count")) if item_dict.get("stargaze_count") is not None else None,
+                "watcher_count": int(item_dict.get("watcher_count")) if item_dict.get("watcher_count") is not None else None,
+                # This is the most likely culprit, casting Decimal to float
+                "weighted_score_index": float(item_dict.get("weighted_score_index")) if item_dict.get("weighted_score_index") is not None else None,
+                "repo_rank": int(item_dict.get("repo_rank")) if item_dict.get("repo_rank") is not None else None,
+                "quartile_bucket": int(item_dict.get("quartile_bucket")) if item_dict.get("quartile_bucket") is not None else None,
+                "repo_rank_category": str(item_dict.get("repo_rank_category")) if item_dict.get("repo_rank_category") is not None else None,
+                "predicted_is_dev_tooling": bool(item_dict.get("predicted_is_dev_tooling")) if item_dict.get("predicted_is_dev_tooling") is not None else None,
+                "predicted_is_educational": bool(item_dict.get("predicted_is_educational")) if item_dict.get("predicted_is_educational") is not None else None,
+                "predicted_is_scaffold": bool(item_dict.get("predicted_is_scaffold")) if item_dict.get("predicted_is_scaffold") is not None else None,
+                "predicted_is_app": bool(item_dict.get("predicted_is_app")) if item_dict.get("predicted_is_app") is not None else None,
+                "predicted_is_infrastructure": bool(item_dict.get("predicted_is_infrastructure")) if item_dict.get("predicted_is_infrastructure") is not None else None,
+            })
+
         # Return the final paginated response using values from the payload.
         return PaginatedRepoResponse(
-            items=items,
+            items=cleaned_items,
             total_items=total_items,
             page=payload.page,
             limit=payload.limit,
