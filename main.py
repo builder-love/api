@@ -688,21 +688,6 @@ async def get_project_repositories_with_semantic_filter(
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
 
-                # ---- START: DIAGNOSTIC LOGGING ----
-                # Add this block to inspect the data before it's returned.
-                print("--- Starting Diagnostic Logging ---")
-                if items:
-                    # Inspect the first item in the list
-                    first_item = items[0]
-                    print("Inspecting data types of the first item:")
-                    for key, value in first_item.items():
-                        print(f"  - Key: '{key}', Value: '{value}', Type: {type(value)}")
-                else:
-                    print("No items were fetched from the database.")
-                print("--- End of Diagnostic Logging ---")
-            
-        total_pages = (total_items + payload.limit - 1) // payload.limit
-
         # Rebuild the items list to ensure all data types are JSON serializable
         # This handles potential issues like Decimal types from the database.
         cleaned_items = []
@@ -725,6 +710,21 @@ async def get_project_repositories_with_semantic_filter(
                 "predicted_is_app": bool(item_dict.get("predicted_is_app")) if item_dict.get("predicted_is_app") is not None else None,
                 "predicted_is_infrastructure": bool(item_dict.get("predicted_is_infrastructure")) if item_dict.get("predicted_is_infrastructure") is not None else None,
             })
+
+        total_pages = (total_items + payload.limit - 1) // payload.limit
+
+        # ---- START: DIAGNOSTIC LOGGING ----
+        # Add this block to inspect the data before it's returned.
+        print("--- Starting Diagnostic Logging ---")
+        if cleaned_items:
+            # Inspect the first item in the list
+            first_item = cleaned_items[0]
+            print("Inspecting data types of the first item:")
+            for key, value in first_item.items():
+                print(f"  - Key: '{key}', Value: '{value}', Type: {type(value)}")
+        else:
+            print("No items were fetched from the database.")
+        print("--- End of Diagnostic Logging ---")
 
         # Return the final paginated response using values from the payload.
         return PaginatedRepoResponse(
