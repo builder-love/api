@@ -609,19 +609,25 @@ async def get_project_repositories_with_semantic_filter(
         # Use the embedding to get repo URLs from the database
         with db.cursor() as cur:
             query = f"""
-                SELECT repo FROM {get_schema_name('api')}.project_repo_embeddings
+                with project_repos as (
+                select distinct
+                    repo
+                from {get_schema_name('api')}.top_projects_repos
+                where project_title ILIKE %(project_title)s
+                )
+                SELECT repo 
+                FROM {get_schema_name('api')}.project_repo_embeddings
+                where repo in (select repo from project_repos)
                 ORDER BY corpus_embedding <=> %(embedding)s
                 LIMIT 100;
             """
-            params = {"embedding": np.array(embedding)}
-
-            # Use mogrify to render the full query for logging.
-            # .decode() is needed because mogrify returns bytes, not a string.
+            params = {"embedding": np.array(embedding), "project_title": project_title}
+            # print the query with the embedding to the log
             full_sql_query = cur.mogrify(query, params).decode('utf-8')
             print(f"Executing Query:\n{full_sql_query}\n")
 
-            # Now execute the query with the original template and params
-            cur.execute(query, params)
+
+            cur.execute(query, {"embedding": np.array(embedding), "project_title": project_title})
             results = cur.fetchall()
             repo_list_for_filter = [row['repo'] for row in results]
 
