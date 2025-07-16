@@ -7,6 +7,13 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.parse
 from config import get_settings
+from pgvector.psycopg2 import register_vector
+import numpy as np
+import httpx
+
+# This URL is only accessible from within Google Cloud
+# we use this to get the internal IP of the GCE instance
+METADATA_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience="
 
 app = FastAPI()
 
@@ -24,6 +31,16 @@ async def get_api_key(api_key: str = Security(api_key_header)):
         )
     return api_key
 
+# This function is used to get the GCP ID token for the GCE instance
+async def get_gcp_id_token(audience_url: str) -> str:
+    """Fetches an OIDC ID token from the GCP metadata server."""
+    headers = {"Metadata-Flavor": "Google"}
+    async with httpx.AsyncClient() as client:
+        # The request to the metadata server gets the token
+        response = await client.get(METADATA_URL + audience_url, headers=headers)
+        response.raise_for_status() # Ensure the request was successful
+        return response.text
+
 # Database Connection Function (Dependency)
 def get_db_connection():
     conn = None
@@ -37,6 +54,7 @@ def get_db_connection():
             cursor_factory=RealDictCursor,
         )
         print("DB connection successful.")
+        register_vector(conn)
         yield conn
     except psycopg2.OperationalError as e:
         print(f"Database connection error (OperationalError): {e}")
@@ -159,6 +177,14 @@ class ProjectOutliers(BaseModel):
     pct_change: Optional[float]
     current_value: Optional[Union[int, float]]
     previous_value: Optional[Union[int, float]]
+
+# project specific repo symantic search - Pydantic model for the POST request body
+class RepoRequestPayload(BaseModel):
+    page: int = 1
+    limit: int = 10
+    sort_by: str = "repo_rank"
+    sort_order: str = "asc"
+    search: Optional[str] = None # The raw search query is now sent here
 
 #######################################################
 # Endpoint for Project outliers
@@ -523,19 +549,17 @@ VALID_SORT_COLUMNS_REPOS = {
     "predicted_is_scaffold": "predicted_is_scaffold"
 }
 
-@app.get("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
-async def get_project_repositories(
+@app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
+async def get_project_repositories_with_semantic_filter(
     project_title_url_encoded: str,
-    page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(10, ge=1, le=100, description="Items per page"),
-    search: Optional[str] = Query(None, min_length=1, description="Search term for repository name (case-insensitive)"),
-    sort_by: Optional[str] = Query("repo_rank", description=f"Column to sort by. Allowed: {', '.join(VALID_SORT_COLUMNS_REPOS.keys())}"),
-    sort_order: Optional[str] = Query("asc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
+    payload: RepoRequestPayload,
     db: psycopg2.extensions.connection = Depends(get_db_connection)
 ):
     """
     Retrieves paginated, searchable, and sortable repository details for a specific project
     from api.top_projects_repos view.
+    
+    This endpoint uses a GCE host to generate embeddeings for semantic search.
     """
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
@@ -546,49 +570,110 @@ async def get_project_repositories(
         raise HTTPException(status_code=400, detail=f"Invalid project title encoding: {e}")
 
     # Validate sort_by column
-    if sort_by and sort_by not in VALID_SORT_COLUMNS_REPOS:
+    if payload.sort_by not in VALID_SORT_COLUMNS_REPOS:
         raise HTTPException(status_code=400, detail=f"Invalid sort_by column. Allowed values: {', '.join(VALID_SORT_COLUMNS_REPOS.keys())}")
     
-    db_sort_column = VALID_SORT_COLUMNS_REPOS.get(sort_by, "repo_rank") # Default sort
-    db_sort_order = "ASC" if sort_order == "asc" else "DESC"
-
-    base_query = f"FROM {get_schema_name('api')}.top_projects_repos WHERE project_title ILIKE %(project_title)s"
-    count_query_sql = f"SELECT COUNT(*) {base_query}"
-    data_query_sql_select = f"SELECT project_title, first_seen_timestamp, latest_data_timestamp, repo, fork_count, stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, repo_rank_category, predicted_is_dev_tooling, predicted_is_educational, predicted_is_scaffold, predicted_is_app, predicted_is_infrastructure {base_query}"
+    db_sort_column = VALID_SORT_COLUMNS_REPOS[payload.sort_by] # Default sort
+    db_sort_order = "ASC" if payload.sort_order == "asc" else "DESC"
 
     params = {"project_title": project_title}
+    where_clauses = ["project_title ILIKE %(project_title)s"]
+    repo_list_for_filter = None
 
-    if search:
-        # Ensure search is applied to the correct field, e.g., 'repo' (the repository name/identifier)
-        data_query_sql_select += " AND repo ILIKE %(search_term)s"
-        count_query_sql += " AND repo ILIKE %(search_term)s"
-        params["search_term"] = f"%{search}%"
+    # ---- embedding generation and semantic search orchestration logic ----
+    if payload.search:
+        # Call the GCE embedding service
+        try:
+            # The audience is the URL of the GCE service
+            gce_audience_url = settings.GCE_EMBED_URL # set as http://{internal-ip}:8000/embed
+            id_token = await get_gcp_id_token(gce_audience_url)
+
+            headers = {
+                "Authorization": f"Bearer {id_token}",
+                "Content-Type": "application/json"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                embed_response = await client.post(
+                    gce_audience_url,
+                    headers=headers, # Send the token in the auth header
+                    json={"text": payload.search},
+                    timeout=15.0
+                )
+                embed_response.raise_for_status() # Raise exception for 4xx/5xx responses
+                embedding = embed_response.json()["embedding"]
+        except httpx.RequestError as e:
+            print(f"Could not reach embedding service: {e}")
+            raise HTTPException(status_code=504, detail="Embedding service is unavailable.")
+
+        # Use the embedding to get repo URLs from the database
+        with db.cursor() as cur:
+            query = f"""
+                SELECT repo FROM {get_schema_name('api')}.latest_project_repo_corpus_embeddings
+                ORDER BY corpus_embedding <=> %(embedding)s
+                LIMIT 100;
+            """
+            cur.execute(query, {"embedding": np.array(embedding)})
+            results = cur.fetchall()
+            repo_list_for_filter = [row['repo'] for row in results]
+
+        # If semantic search returned no results, we can stop here.
+        if not repo_list_for_filter:
+            return PaginatedRepoResponse(items=[], total_items=0, page=payload.page, limit=payload.limit, total_pages=0)
+        
+        # Add the list to the WHERE clause
+        where_clauses.append("repo = ANY(%(repos)s)")
+        params["repos"] = repo_list_for_filter
+
+
+    # Build the final WHERE clause from the list we created.
+    # This includes the "repo = ANY(...)" filter if a semantic search was done.
+    where_sql = " AND ".join(where_clauses)
+
+    # Define the query parts. Use the 'api.top_projects_repos' view which should
+    # already have all the columns needed for the response.
+    from_clause = f"FROM {get_schema_name('api')}.top_projects_repos"
     
-    # Add ORDER BY, LIMIT, OFFSET to the data query
-    data_query_sql_select += f" ORDER BY {db_sort_column} {db_sort_order} NULLS LAST" # NULLS LAST can be useful
-    data_query_sql_select += " LIMIT %(limit)s OFFSET %(offset)s"
-    
-    offset = (page - 1) * limit
-    params["limit"] = limit
+    # Construct the full SQL queries for counting and fetching data.
+    count_query_sql = f"SELECT COUNT(*) {from_clause} WHERE {where_sql}"
+    data_query_sql = f"""
+        SELECT 
+            project_title, first_seen_timestamp, latest_data_timestamp, repo, fork_count, 
+            stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, 
+            repo_rank_category, predicted_is_dev_tooling, predicted_is_educational, 
+            predicted_is_scaffold, predicted_is_app, predicted_is_infrastructure 
+        {from_clause}
+        WHERE {where_sql}
+        ORDER BY {db_sort_column} {db_sort_order} NULLS LAST
+        LIMIT %(limit)s OFFSET %(offset)s
+    """
+
+    # Set pagination parameters using the 'payload' object
+    offset = (payload.page - 1) * payload.limit
+    params["limit"] = payload.limit
     params["offset"] = offset
 
     try:
         with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # Get total count
-            cur.execute(count_query_sql, {"project_title": project_title, "search_term": f"%{search}%" if search else "%"}) # Adjust params for count
-            total_items = cur.fetchone()['count']
+            # Execute the count query using the 'params' dictionary we've been building.
+            cur.execute(count_query_sql, params)
+            total_items_result = cur.fetchone()
+            total_items = total_items_result['count'] if total_items_result else 0
 
-            # Get paginated data
-            cur.execute(data_query_sql_select, params)
-            items = cur.fetchall()
+            items = []
+            if total_items > 0:
+                # Execute the data query only if there are items to fetch.
+                cur.execute(data_query_sql, params)
+                items = cur.fetchall()
             
-        total_pages = (total_items + limit - 1) // limit  # Ceiling division
+        total_pages = (total_items + payload.limit - 1) // payload.limit
 
+        # Return the final paginated response using values from the payload.
         return {
             "items": items,
             "total_items": total_items,
-            "page": page,
-            "limit": limit,
+            "page": payload.page,
+            "limit": payload.limit,
             "total_pages": total_pages
         }
     except psycopg2.Error as e:
