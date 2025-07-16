@@ -613,6 +613,7 @@ async def get_project_repositories_with_semantic_filter(
                 ORDER BY corpus_embedding <=> %(embedding)s
                 LIMIT 100;
             """
+            print(f"Query: {query}")
             cur.execute(query, {"embedding": np.array(embedding)})
             results = cur.fetchall()
             repo_list_for_filter = [row['repo'] for row in results]
