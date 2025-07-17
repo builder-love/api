@@ -588,37 +588,6 @@ async def generate_embedding(
     
     return embedding
 
-async def get_repo_urls_from_embedding(
-    embedding: list[float],
-    project_title: str,
-    db: psycopg2.extensions.connection
-) -> list[str]:
-    """
-    Uses the embedding to get repo URLs from the database
-    """
-    # Use the embedding to get repo URLs from the database
-    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        query = f"""
-            WITH project_repos AS (
-                SELECT DISTINCT repo
-                FROM {get_schema_name('api')}.top_projects_repos
-                WHERE project_title ILIKE %(project_title)s
-            ),
-            project_repo_embeddings AS (
-                SELECT repo, corpus_embedding
-                FROM {get_schema_name('api')}.project_repo_embeddings
-                WHERE repo IN (SELECT repo FROM project_repos)
-            )
-            SELECT repo
-            FROM project_repo_embeddings
-            ORDER BY corpus_embedding <=> %(embedding)s
-            LIMIT 200;
-        """
-        params = {"embedding": np.array(embedding), "project_title": project_title}
-        cur.execute(query, params)
-        results = cur.fetchall()
-        return [row['repo'] for row in results]
-
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
 async def get_project_repositories_with_semantic_filter(
     project_title_url_encoded: str,
@@ -647,8 +616,6 @@ async def get_project_repositories_with_semantic_filter(
     db_sort_column = VALID_SORT_COLUMNS_REPOS[payload.sort_by] # Default sort
     db_sort_order = "ASC" if payload.sort_order == "asc" else "DESC"
     params = {"project_title": project_title} # universal params 
-    where_clauses = ["project_title ILIKE %(project_title)s"] # base where clause that get's built on top of
-    repo_list_for_filter = None # this will be populated if the search query is not empty
     # Set pagination parameters using the 'payload' object
     offset = (payload.page - 1) * payload.limit
     params["limit"] = payload.limit
@@ -663,36 +630,49 @@ async def get_project_repositories_with_semantic_filter(
 
         # call the get_semantically_similar_repos function to generate an embedding
         embedding = await generate_embedding(payload.search, gce_audience_url)
+        params["embedding"] = np.array(embedding)
 
-        # get the repo URLs from the database
-        repo_list_for_filter = await get_repo_urls_from_embedding(embedding, project_title, db)
+        # The JOIN is only needed for semantic search
+        from_clause = f"""
+            FROM {get_schema_name('api')}.top_projects_repos AS tpr
+            JOIN {get_schema_name('api')}.project_repo_embeddings AS pre
+                 ON tpr.repo = pre.repo
+        """
+        # Note the change to tpr.project_title
+        where_sql = "tpr.project_title ILIKE %(project_title)s"
+        # The ORDER BY is based on vector similarity
+        order_by_sql = "ORDER BY pre.corpus_embedding <=> %(embedding)s ASC"
 
-        # if the repo list for filter is empty, we can stop here.
-        if not repo_list_for_filter:
-            return PaginatedRepoResponse(items=[], total_items=0, page=payload.page, limit=payload.limit, total_pages=0)
-        
-        # add the list to the WHERE clause and params object
-        where_clauses.append("repo = ANY(%(repos)s)")
-        params["repos"] = repo_list_for_filter
-
-    # Build the final WHERE clause from the list we created.
-    where_sql = " AND ".join(where_clauses)
-
-    # Define the query parts. Use the 'api.top_projects_repos' view which should
-    # already have all the columns needed for the response.
-    from_clause = f"FROM {get_schema_name('api')}.top_projects_repos"
+    else:
+        # --- This path is for STANDARD, non-semantic requests ---
+        from_clause = f"FROM {get_schema_name('api')}.top_projects_repos tpr"
+        where_sql = "tpr.project_title ILIKE %(project_title)s"
+        # The ORDER BY is based on the user's sort selection
+        order_by_sql = f"ORDER BY {db_sort_column} {db_sort_order} NULLS LAST"
     
     # Construct the full SQL queries for counting and fetching data.
     count_query_sql = f"SELECT COUNT(*) {from_clause} WHERE {where_sql}"
     data_query_sql = f"""
         SELECT 
-            project_title, first_seen_timestamp, latest_data_timestamp, repo, fork_count, 
-            stargaze_count, watcher_count, weighted_score_index, repo_rank, quartile_bucket, 
-            repo_rank_category, predicted_is_dev_tooling, predicted_is_educational, 
-            predicted_is_scaffold, predicted_is_app, predicted_is_infrastructure 
+            tpr.project_title, 
+            tpr.first_seen_timestamp, 
+            tpr.latest_data_timestamp, 
+            tpr.repo, 
+            tpr.fork_count, 
+            tpr.stargaze_count, 
+            tpr.watcher_count, 
+            tpr.weighted_score_index, 
+            tpr.repo_rank, 
+            tpr.quartile_bucket, 
+            tpr.repo_rank_category, 
+            tpr.predicted_is_dev_tooling, 
+            tpr.predicted_is_educational, 
+            tpr.predicted_is_scaffold, 
+            tpr.predicted_is_app, 
+            tpr.predicted_is_infrastructure
         {from_clause}
         WHERE {where_sql}
-        ORDER BY {db_sort_column} {db_sort_order} NULLS LAST
+        {order_by_sql}
         LIMIT %(limit)s OFFSET %(offset)s
     """
 
