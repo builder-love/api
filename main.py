@@ -712,8 +712,6 @@ async def get_project_repositories_with_semantic_filter(
             items = []
             if total_items > 0:
                 # Set pagination parameters using the 'payload' object
-                print(f"Payload.limit: {payload.limit}")
-                print(f"Payload.page: {payload.page}")
                 offset = (payload.page - 1) * payload.limit
                 params["limit"] = payload.limit
                 params["offset"] = offset
