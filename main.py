@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -551,6 +551,13 @@ VALID_SORT_COLUMNS_REPOS = {
     "distance": "distance" # cosine similarity distance
 }
 
+# --- In-Memory Cache ---
+# Use a global dictionary as an in-memory cache.
+# This cache will store generated embeddings to avoid re-calling the embedding service
+# for the same search query. If we introduce a multiple server processes,
+# we would use a shared cache like Redis or Memcached for this.
+embedding_cache: Dict[str, List[float]] = {}
+
 # embedding generation and semantic search orchestration logic
 async def generate_embedding(
     search_text: str,
@@ -558,8 +565,16 @@ async def generate_embedding(
 ) -> list[float]:
     """
     Generates an embedding for the search text and returns a list of
-    semantically similar repository URLs for a given project.
+    semantically similar repository URLs for a given project. uses a cache to avoid running the embedding service
+    for the same search query.
     """
+    # Check the cache first.
+    if search_text in embedding_cache:
+        print(f"Cache HIT for search text: '{search_text}'")
+        return embedding_cache[search_text]
+
+    # If not in cache, it's a "cache miss". Generate a new embedding.
+    print(f"Cache MISS for search text: '{search_text}'. Calling embedding service.")
     # Call the GCE embedding service
     try:
         id_token = await get_gcp_id_token(gce_url)
@@ -588,6 +603,9 @@ async def generate_embedding(
     if not embedding:
         raise HTTPException(status_code=500, detail="Embedding is empty")
     
+    # Store the new embedding in the cache before returning.
+    embedding_cache[search_text] = embedding
+
     return embedding
 
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
@@ -601,6 +619,7 @@ async def get_project_repositories_with_semantic_filter(
     from api.top_projects_repos view.
     
     This endpoint uses a GCE host to generate embeddeings for semantic search.
+    Embeddings for semantic search are cached to improve performance.
     """
 
     # Define a threshold for semantic similarity.
