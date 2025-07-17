@@ -547,8 +547,7 @@ VALID_SORT_COLUMNS_REPOS = {
     "repo_rank_category": "repo_rank_category",
     "predicted_is_dev_tooling": "predicted_is_dev_tooling",
     "predicted_is_educational": "predicted_is_educational",
-    "predicted_is_scaffold": "predicted_is_scaffold",
-    "distance": "distance" # cosine similarity distance
+    "predicted_is_scaffold": "predicted_is_scaffold"
 }
 
 # --- In-Memory Cache ---
@@ -705,6 +704,8 @@ async def get_project_repositories_with_semantic_filter(
     # execute the queries
     try:
         with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Set a timeout for this transaction that is less than the Vercel timeout (10 seconds)
+            cur.execute("SET LOCAL statement_timeout = '8000';") # 8000ms = 8 seconds
             # Execute the count query using the 'params' dictionary we've been building.
             cur.execute(count_query_sql, params)
             total_items_result = cur.fetchone()
