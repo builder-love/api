@@ -171,13 +171,6 @@ class PaginatedRepoResponse(BaseModel):
     limit: int
     total_pages: int
 
-class ProjectOutliers(BaseModel):
-    project_title: str
-    report_date: str
-    pct_change: Optional[float]
-    current_value: Optional[Union[int, float]]
-    previous_value: Optional[Union[int, float]]
-
 # project specific repo symantic search - Pydantic model for the POST request body
 class RepoRequestPayload(BaseModel):
     page: int = 1
@@ -185,6 +178,13 @@ class RepoRequestPayload(BaseModel):
     sort_by: str = "repo_rank"
     sort_order: str = "asc"
     search: Optional[str] = None # The raw search query is now sent here
+
+class ProjectOutliers(BaseModel):
+    project_title: str
+    report_date: str
+    pct_change: Optional[float]
+    current_value: Optional[Union[int, float]]
+    previous_value: Optional[Union[int, float]]
 
 #######################################################
 # Endpoint for Project outliers
@@ -672,13 +672,6 @@ async def get_project_repositories_with_semantic_filter(
         LIMIT %(limit)s OFFSET %(offset)s
     """
 
-    # Set pagination parameters using the 'payload' object
-    print(f"Payload.limit: {payload.limit}")
-    print(f"Payload.page: {payload.page}")
-    offset = (payload.page - 1) * payload.limit
-    params["limit"] = payload.limit
-    params["offset"] = offset
-
     # execute the queries
     try:
         with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -689,6 +682,12 @@ async def get_project_repositories_with_semantic_filter(
 
             items = []
             if total_items > 0:
+                # Set pagination parameters using the 'payload' object
+                print(f"Payload.limit: {payload.limit}")
+                print(f"Payload.page: {payload.page}")
+                offset = (payload.page - 1) * payload.limit
+                params["limit"] = payload.limit
+                params["offset"] = offset
                 # print(f"Total items: {total_items}")
                 # full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
                 # print(f"Executing Data Query:\n{full_sql_query.replace('\n', ' ')}\n")
