@@ -163,6 +163,7 @@ class RepoDetail(BaseModel):
     predicted_is_scaffold: Optional[bool]
     predicted_is_app: Optional[bool]
     predicted_is_infrastructure: Optional[bool]
+    distance: Optional[float]
 
 class PaginatedRepoResponse(BaseModel):
     items: List[RepoDetail]
@@ -546,7 +547,8 @@ VALID_SORT_COLUMNS_REPOS = {
     "repo_rank_category": "repo_rank_category",
     "predicted_is_dev_tooling": "predicted_is_dev_tooling",
     "predicted_is_educational": "predicted_is_educational",
-    "predicted_is_scaffold": "predicted_is_scaffold"
+    "predicted_is_scaffold": "predicted_is_scaffold",
+    "distance": "distance" # cosine similarity distance
 }
 
 # embedding generation and semantic search orchestration logic
@@ -600,6 +602,11 @@ async def get_project_repositories_with_semantic_filter(
     
     This endpoint uses a GCE host to generate embeddeings for semantic search.
     """
+
+    # Define a threshold for semantic similarity.
+    # A lower value means higher similarity. 0.5 is a reasonable starting point.
+    SIMILARITY_THRESHOLD = 0.5
+
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
@@ -617,6 +624,16 @@ async def get_project_repositories_with_semantic_filter(
     db_sort_order = "ASC" if payload.sort_order == "asc" else "DESC"
     params = {"project_title": project_title} # universal params 
 
+    # The fields to select from the table.
+    select_fields = """
+        tpr.project_title, tpr.first_seen_timestamp, tpr.latest_data_timestamp, 
+        tpr.repo, tpr.fork_count, tpr.stargaze_count, tpr.watcher_count, 
+        tpr.weighted_score_index, tpr.repo_rank, tpr.quartile_bucket, 
+        tpr.repo_rank_category, tpr.predicted_is_dev_tooling, 
+        tpr.predicted_is_educational, tpr.predicted_is_scaffold, 
+        tpr.predicted_is_app, tpr.predicted_is_infrastructure
+    """
+
     # ---- embedding generation and semantic search orchestration logic ----
     # if the search query is not empty, we need to generate an embedding and get repo URLs from the database
     if payload.search:
@@ -627,6 +644,8 @@ async def get_project_repositories_with_semantic_filter(
         # call the get_semantically_similar_repos function to generate an embedding
         embedding = await generate_embedding(payload.search, gce_audience_url)
         params["embedding"] = np.array(embedding)
+        # Similarity threshold
+        params["similarity_threshold"] = SIMILARITY_THRESHOLD
 
         # The JOIN is only needed for semantic search
         from_clause = f"""
@@ -634,38 +653,28 @@ async def get_project_repositories_with_semantic_filter(
             JOIN {get_schema_name('api')}.project_repo_embeddings AS pre
                  ON tpr.repo = pre.repo
         """
-        # Note the change to tpr.project_title
-        where_sql = "tpr.project_title ILIKE %(project_title)s"
-        # The ORDER BY is based on vector similarity
-        order_by_sql = "ORDER BY pre.corpus_embedding <=> %(embedding)s ASC"
+        # Filters by the similarity score.
+        where_sql = "tpr.project_title ILIKE %(project_title)s AND (pre.corpus_embedding <=> %(embedding)s) < %(similarity_threshold)s"
+        
+        # Add the distance calculation to the SELECT statement.
+        select_fields += ", (pre.corpus_embedding <=> %(embedding)s) as distance"
+        
+        # Default sort for semantic search is by distance (relevance).
+        # The user can override this by selecting another column.
+        order_by_sql = f"ORDER BY {db_sort_column} {db_sort_order} NULLS LAST"
 
     else:
         # --- This path is for STANDARD, non-semantic requests ---
         from_clause = f"FROM {get_schema_name('api')}.top_projects_repos tpr"
         where_sql = "tpr.project_title ILIKE %(project_title)s"
+        select_fields += ", NULL as distance"
         # The ORDER BY is based on the user's sort selection
         order_by_sql = f"ORDER BY {db_sort_column} {db_sort_order} NULLS LAST"
     
     # Construct the full SQL queries for counting and fetching data.
     count_query_sql = f"SELECT COUNT(*) {from_clause} WHERE {where_sql}"
     data_query_sql = f"""
-        SELECT 
-            tpr.project_title, 
-            tpr.first_seen_timestamp, 
-            tpr.latest_data_timestamp, 
-            tpr.repo, 
-            tpr.fork_count, 
-            tpr.stargaze_count, 
-            tpr.watcher_count, 
-            tpr.weighted_score_index, 
-            tpr.repo_rank, 
-            tpr.quartile_bucket, 
-            tpr.repo_rank_category, 
-            tpr.predicted_is_dev_tooling, 
-            tpr.predicted_is_educational, 
-            tpr.predicted_is_scaffold, 
-            tpr.predicted_is_app, 
-            tpr.predicted_is_infrastructure
+        SELECT {select_fields}
         {from_clause}
         WHERE {where_sql}
         {order_by_sql}
@@ -697,26 +706,7 @@ async def get_project_repositories_with_semantic_filter(
 
         # Rebuild the items list to ensure all data types are JSON serializable
         # This handles potential issues like Decimal types from the database.
-        cleaned_items = []
-        for item_dict in items:
-            cleaned_items.append({
-                "project_title": str(item_dict.get("project_title")) if item_dict.get("project_title") is not None else None,
-                "first_seen_timestamp": str(item_dict.get("first_seen_timestamp")) if item_dict.get("first_seen_timestamp") is not None else None,
-                "latest_data_timestamp": str(item_dict.get("latest_data_timestamp")) if item_dict.get("latest_data_timestamp") is not None else None,
-                "repo": str(item_dict.get("repo")) if item_dict.get("repo") is not None else None,
-                "fork_count": int(item_dict.get("fork_count")) if item_dict.get("fork_count") is not None else None,
-                "stargaze_count": int(item_dict.get("stargaze_count")) if item_dict.get("stargaze_count") is not None else None,
-                "watcher_count": int(item_dict.get("watcher_count")) if item_dict.get("watcher_count") is not None else None,
-                "weighted_score_index": float(item_dict.get("weighted_score_index")) if item_dict.get("weighted_score_index") is not None else None,
-                "repo_rank": int(item_dict.get("repo_rank")) if item_dict.get("repo_rank") is not None else None,
-                "quartile_bucket": int(item_dict.get("quartile_bucket")) if item_dict.get("quartile_bucket") is not None else None,
-                "repo_rank_category": str(item_dict.get("repo_rank_category")) if item_dict.get("repo_rank_category") is not None else None,
-                "predicted_is_dev_tooling": bool(item_dict.get("predicted_is_dev_tooling")) if item_dict.get("predicted_is_dev_tooling") is not None else None,
-                "predicted_is_educational": bool(item_dict.get("predicted_is_educational")) if item_dict.get("predicted_is_educational") is not None else None,
-                "predicted_is_scaffold": bool(item_dict.get("predicted_is_scaffold")) if item_dict.get("predicted_is_scaffold") is not None else None,
-                "predicted_is_app": bool(item_dict.get("predicted_is_app")) if item_dict.get("predicted_is_app") is not None else None,
-                "predicted_is_infrastructure": bool(item_dict.get("predicted_is_infrastructure")) if item_dict.get("predicted_is_infrastructure") is not None else None,
-            })
+        cleaned_items = [RepoDetail(**item) for item in items]
 
         total_pages = (total_items + payload.limit - 1) // payload.limit
 
