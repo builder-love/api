@@ -616,10 +616,6 @@ async def get_project_repositories_with_semantic_filter(
     db_sort_column = VALID_SORT_COLUMNS_REPOS[payload.sort_by] # Default sort
     db_sort_order = "ASC" if payload.sort_order == "asc" else "DESC"
     params = {"project_title": project_title} # universal params 
-    # Set pagination parameters using the 'payload' object
-    offset = (payload.page - 1) * payload.limit
-    params["limit"] = payload.limit
-    params["offset"] = offset
 
     # ---- embedding generation and semantic search orchestration logic ----
     # if the search query is not empty, we need to generate an embedding and get repo URLs from the database
@@ -676,6 +672,13 @@ async def get_project_repositories_with_semantic_filter(
         LIMIT %(limit)s OFFSET %(offset)s
     """
 
+    # Set pagination parameters using the 'payload' object
+    print(f"Payload.limit: {payload.limit}")
+    print(f"Payload.page: {payload.page}")
+    offset = (payload.page - 1) * payload.limit
+    params["limit"] = payload.limit
+    params["offset"] = offset
+
     # execute the queries
     try:
         with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -718,18 +721,18 @@ async def get_project_repositories_with_semantic_filter(
 
         total_pages = (total_items + payload.limit - 1) // payload.limit
 
-        # ---- START: DIAGNOSTIC LOGGING ----
-        # Add this block to inspect the data before it's returned.
-        print("--- Starting Diagnostic Logging ---")
-        if cleaned_items:
-            # Inspect the first item in the list
-            first_item = cleaned_items[0]
-            print("Inspecting data types of the first item:")
-            for key, value in first_item.items():
-                print(f"  - Key: '{key}', Value: '{value}', Type: {type(value)}")
-        else:
-            print("No items were fetched from the database.")
-        print("--- End of Diagnostic Logging ---")
+        # # ---- START: DIAGNOSTIC LOGGING ----
+        # # Add this block to inspect the data before it's returned.
+        # print("--- Starting Diagnostic Logging ---")
+        # if cleaned_items:
+        #     # Inspect the first item in the list
+        #     first_item = cleaned_items[0]
+        #     print("Inspecting data types of the first item:")
+        #     for key, value in first_item.items():
+        #         print(f"  - Key: '{key}', Value: '{value}', Type: {type(value)}")
+        # else:
+        #     print("No items were fetched from the database.")
+        # print("--- End of Diagnostic Logging ---")
 
         # Return the final paginated response using values from the payload.
         return PaginatedRepoResponse(
