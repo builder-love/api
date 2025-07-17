@@ -549,6 +549,76 @@ VALID_SORT_COLUMNS_REPOS = {
     "predicted_is_scaffold": "predicted_is_scaffold"
 }
 
+# embedding generation and semantic search orchestration logic
+async def generate_embedding(
+    search_text: str,
+    gce_url: str
+) -> list[float]:
+    """
+    Generates an embedding for the search text and returns a list of
+    semantically similar repository URLs for a given project.
+    """
+    # Call the GCE embedding service
+    try:
+        id_token = await get_gcp_id_token(gce_url)
+        headers = {
+            "Authorization": f"Bearer {id_token}",
+            "Content-Type": "application/json"
+        }
+        async with httpx.AsyncClient() as client:
+            embed_response = await client.post(
+                gce_url,
+                headers=headers,
+                json={"text": search_text},
+                timeout=15.0
+            )
+            embed_response.raise_for_status()
+            embedding = embed_response.json()["embedding"]
+    except httpx.RequestError as e:
+        print(f"Could not reach embedding service: {e}")
+        raise HTTPException(status_code=504, detail="Embedding service is unavailable.")
+    
+    # check the embedding is a list of floats
+    if not isinstance(embedding, list):
+        raise HTTPException(status_code=500, detail="Embedding is not a list of floats")
+    
+    # check the embedding is not empty
+    if not embedding:
+        raise HTTPException(status_code=500, detail="Embedding is empty")
+    
+    return embedding
+
+async def get_repo_urls_from_embedding(
+    embedding: list[float],
+    project_title: str,
+    db: psycopg2.extensions.connection
+) -> list[str]:
+    """
+    Uses the embedding to get repo URLs from the database
+    """
+    # Use the embedding to get repo URLs from the database
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        query = f"""
+            WITH project_repos AS (
+                SELECT DISTINCT repo
+                FROM {get_schema_name('api')}.top_projects_repos
+                WHERE project_title ILIKE %(project_title)s
+            ),
+            project_repo_embeddings AS (
+                SELECT repo, corpus_embedding
+                FROM {get_schema_name('api')}.project_repo_embeddings
+                WHERE repo IN (SELECT repo FROM project_repos)
+            )
+            SELECT repo
+            FROM project_repo_embeddings
+            ORDER BY corpus_embedding <=> %(embedding)s
+            LIMIT 200;
+        """
+        params = {"embedding": np.array(embedding), "project_title": project_title}
+        cur.execute(query, params)
+        results = cur.fetchall()
+        return [row['repo'] for row in results]
+
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
 async def get_project_repositories_with_semantic_filter(
     project_title_url_encoded: str,
@@ -573,81 +643,39 @@ async def get_project_repositories_with_semantic_filter(
     if payload.sort_by not in VALID_SORT_COLUMNS_REPOS:
         raise HTTPException(status_code=400, detail=f"Invalid sort_by column. Allowed values: {', '.join(VALID_SORT_COLUMNS_REPOS.keys())}")
     
+    # define variables we will use to construct the SQL query
     db_sort_column = VALID_SORT_COLUMNS_REPOS[payload.sort_by] # Default sort
     db_sort_order = "ASC" if payload.sort_order == "asc" else "DESC"
-
-    params = {"project_title": project_title}
-    where_clauses = ["project_title ILIKE %(project_title)s"]
-    repo_list_for_filter = None
+    params = {"project_title": project_title} # universal params 
+    where_clauses = ["project_title ILIKE %(project_title)s"] # base where clause that get's built on top of
+    repo_list_for_filter = None # this will be populated if the search query is not empty
+    # Set pagination parameters using the 'payload' object
+    offset = (payload.page - 1) * payload.limit
+    params["limit"] = payload.limit
+    params["offset"] = offset
 
     # ---- embedding generation and semantic search orchestration logic ----
+    # if the search query is not empty, we need to generate an embedding and get repo URLs from the database
     if payload.search:
-        # Call the GCE embedding service
-        try:
-            # The audience is the URL of the GCE service
-            gce_audience_url = settings.GCE_EMBED_URL # set as http://{internal-ip}:8000/embed
-            id_token = await get_gcp_id_token(gce_audience_url)
 
-            headers = {
-                "Authorization": f"Bearer {id_token}",
-                "Content-Type": "application/json"
-            }
-            
-            async with httpx.AsyncClient() as client:
-                embed_response = await client.post(
-                    gce_audience_url,
-                    headers=headers, # Send the token in the auth header
-                    json={"text": payload.search},
-                    timeout=15.0
-                )
-                embed_response.raise_for_status() # Raise exception for 4xx/5xx responses
-                embedding = embed_response.json()["embedding"]
-        except httpx.RequestError as e:
-            print(f"Could not reach embedding service: {e}")
-            raise HTTPException(status_code=504, detail="Embedding service is unavailable.")
+        # The audience is the URL of the GCE service
+        gce_audience_url = settings.GCE_EMBED_URL # set as http://{internal-ip}:8000/embed
 
-        # Use the embedding to get repo URLs from the database
-        with db.cursor() as cur:
-            query = f"""
-                with project_repos as (
-                    select distinct
-                        repo
-                    from {get_schema_name('api')}.top_projects_repos
-                    where project_title ILIKE %(project_title)s
-                ),
-                project_repo_embeddings as (
-                    SELECT repo, corpus_embedding
-                    FROM {get_schema_name('api')}.project_repo_embeddings
-                    where repo in (select repo from project_repos)
-                )
+        # call the get_semantically_similar_repos function to generate an embedding
+        embedding = await generate_embedding(payload.search, gce_audience_url)
 
-                select repo 
-                from project_repo_embeddings
-                ORDER BY corpus_embedding <=> %(embedding)s
-                limit 10;
-            """
-            params = {"embedding": np.array(embedding), "project_title": project_title}
-            # print the query with the embedding to the log
-            full_sql_query = cur.mogrify(query, params).decode('utf-8')
-            print(f"Executing Query:\n{full_sql_query.replace('\n', ' ')}\n")
+        # get the repo URLs from the database
+        repo_list_for_filter = await get_repo_urls_from_embedding(embedding, project_title, db)
 
-
-            cur.execute(query, {"embedding": np.array(embedding), "project_title": project_title})
-            results = cur.fetchall()
-            repo_list_for_filter = [row['repo'] for row in results]
-            print(f"Repo list for filter: {repo_list_for_filter}")
-
-        # If semantic search returned no results, we can stop here.
+        # if the repo list for filter is empty, we can stop here.
         if not repo_list_for_filter:
             return PaginatedRepoResponse(items=[], total_items=0, page=payload.page, limit=payload.limit, total_pages=0)
         
-        # Add the list to the WHERE clause
+        # add the list to the WHERE clause and params object
         where_clauses.append("repo = ANY(%(repos)s)")
         params["repos"] = repo_list_for_filter
 
-
     # Build the final WHERE clause from the list we created.
-    # This includes the "repo = ANY(...)" filter if a semantic search was done.
     where_sql = " AND ".join(where_clauses)
 
     # Define the query parts. Use the 'api.top_projects_repos' view which should
@@ -668,11 +696,7 @@ async def get_project_repositories_with_semantic_filter(
         LIMIT %(limit)s OFFSET %(offset)s
     """
 
-    # Set pagination parameters using the 'payload' object
-    offset = (payload.page - 1) * payload.limit
-    params["limit"] = payload.limit
-    params["offset"] = offset
-
+    # execute the queries
     try:
         with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Execute the count query using the 'params' dictionary we've been building.
@@ -682,9 +706,9 @@ async def get_project_repositories_with_semantic_filter(
 
             items = []
             if total_items > 0:
-                print(f"Total items: {total_items}")
-                full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
-                print(f"Executing Data Query:\n{full_sql_query.replace('\n', ' ')}\n")
+                # print(f"Total items: {total_items}")
+                # full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
+                # print(f"Executing Data Query:\n{full_sql_query.replace('\n', ' ')}\n")
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
