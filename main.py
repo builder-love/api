@@ -178,7 +178,7 @@ class RepoRequestPayload(BaseModel):
     limit: int = 10
     sort_by: str = "repo_rank"
     sort_order: str = "asc"
-    search: Optional[str] = None # The raw search query is now sent here
+    search: Optional[str] = Field(None, max_length=40) # The raw search query is now sent here
 
 class ProjectOutliers(BaseModel):
     project_title: str
