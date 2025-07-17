@@ -623,7 +623,7 @@ async def get_project_repositories_with_semantic_filter(
 
     # Define a threshold for semantic similarity.
     # A lower value means higher similarity. 0.5 is a reasonable starting point.
-    SIMILARITY_THRESHOLD = 0.5
+    SIMILARITY_THRESHOLD = 0.45
 
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
