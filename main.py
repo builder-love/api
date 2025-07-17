@@ -661,6 +661,7 @@ async def get_project_repositories_with_semantic_filter(
         gce_audience_url = settings.GCE_EMBED_URL # set as http://{internal-ip}:8000/embed
 
         # call the get_semantically_similar_repos function to generate an embedding
+        print("Starting embedding generation...")
         embedding = await generate_embedding(payload.search, gce_audience_url)
         print("Embeddings generated...")
         params["embedding"] = np.array(embedding)
