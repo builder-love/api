@@ -662,6 +662,7 @@ async def get_project_repositories_with_semantic_filter(
 
         # call the get_semantically_similar_repos function to generate an embedding
         embedding = await generate_embedding(payload.search, gce_audience_url)
+        print("Embeddings generated...")
         params["embedding"] = np.array(embedding)
         # Similarity threshold
         params["similarity_threshold"] = SIMILARITY_THRESHOLD
