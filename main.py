@@ -10,6 +10,8 @@ from config import get_settings
 from pgvector.psycopg2 import register_vector
 import numpy as np
 import httpx
+import google.auth
+import google.auth.transport.requests
 
 # This URL is only accessible from within Google Cloud
 # we use this to get the internal IP of the GCE instance
@@ -558,53 +560,38 @@ VALID_SORT_COLUMNS_REPOS = {
 embedding_cache: Dict[str, List[float]] = {}
 
 # embedding generation and semantic search orchestration logic
-async def generate_embedding(
-    search_text: str,
-    gce_url: str
-) -> list[float]:
+async def generate_embedding(search_text: str, gce_audience_url: str) -> List[float]:
     """
-    Generates an embedding for the search text and returns a list of
-    semantically similar repository URLs for a given project. uses a cache to avoid running the embedding service
-    for the same search query.
+    Calls the dedicated Qwen embedding service on Cloud Run.
     """
-    # Check the cache first.
+
+    # Check the cache first...
     if search_text in embedding_cache:
-        print(f"Cache HIT for search text: '{search_text}'")
+        print(f"Cache HIT for Qwen: '{search_text}'")
         return embedding_cache[search_text]
 
-    # If not in cache, it's a "cache miss". Generate a new embedding.
-    print(f"Cache MISS for search text: '{search_text}'. Calling embedding service.")
-    # Call the GCE embedding service
-    try:
-        id_token = await get_gcp_id_token(gce_url)
-        headers = {
-            "Authorization": f"Bearer {id_token}",
-            "Content-Type": "application/json"
-        }
-        async with httpx.AsyncClient() as client:
-            embed_response = await client.post(
-                gce_url,
-                headers=headers,
-                json={"text": search_text},
-                timeout=15.0
-            )
-            embed_response.raise_for_status()
-            embedding = embed_response.json()["embedding"]
-    except httpx.RequestError as e:
-        print(f"Could not reach embedding service: {e}")
-        raise HTTPException(status_code=504, detail="Embedding service is unavailable.")
-    
-    # check the embedding is a list of floats
-    if not isinstance(embedding, list):
-        raise HTTPException(status_code=500, detail="Embedding is not a list of floats")
-    
-    # check the embedding is not empty
-    if not embedding:
-        raise HTTPException(status_code=500, detail="Embedding is empty")
-    
-    # Store the new embedding in the cache before returning.
-    embedding_cache[search_text] = embedding
+    # Get a GCP identity token to securely call the other Cloud Run service
+    creds, project = google.auth.default()
+    auth_req = google.auth.transport.requests.Request()
+    id_token = google.oauth2.id_token.fetch_id_token(auth_req, gce_audience_url)
 
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            gce_audience_url,
+            headers=headers,
+            json={"text": search_text},
+            timeout=15.0
+        )
+        response.raise_for_status()
+        embedding = response.json()["embedding"]
+
+    # Store in cache and return
+    embedding_cache[search_text] = embedding
     return embedding
 
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
@@ -657,7 +644,7 @@ async def get_project_repositories_with_semantic_filter(
     if payload.search:
 
         # The audience is the URL of the GCE service
-        gce_audience_url = settings.GCE_EMBED_URL # set as http://{internal-ip}:8000/embed
+        gce_audience_url = settings.GCE_EMBED_URL # set to the cloud run service URL
 
         # call the get_semantically_similar_repos function to generate an embedding
         print("Starting embedding generation...")
