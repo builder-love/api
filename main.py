@@ -606,7 +606,7 @@ async def get_project_repositories_with_semantic_filter(
     Retrieves paginated, searchable, and sortable repository details for a specific project
     from api.top_projects_repos view.
     
-    This endpoint uses a GCE host to generate embeddeings for semantic search.
+    This endpoint uses a cloud run service to generate embeddeings for semantic search.
     Embeddings for semantic search are cached to improve performance.
     """
 
@@ -643,6 +643,9 @@ async def get_project_repositories_with_semantic_filter(
 
     # ---- embedding generation and semantic search orchestration logic ----
     # if the search query is not empty, we need to generate an embedding and get repo URLs from the database
+    print("******************************************************************************************")
+    print(f"Payload search field: {payload.search}")
+    print("******************************************************************************************")
     if payload.search:
 
         # The audience is the URL of the GCE service
