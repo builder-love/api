@@ -722,6 +722,12 @@ async def get_project_repositories_with_semantic_filter(
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
+            else:
+                print("No items were fetched from the database.")
+                print("******************************************************************************************")
+                full_sql_query = cur.mogrify(count_query_sql, params).decode('utf-8')
+                print(f"Executed Count Query:\n{full_sql_query.replace('\n', ' ')}\n")
+                print("******************************************************************************************")
 
         # Rebuild the items list to ensure all data types are JSON serializable
         # This handles potential issues like Decimal types from the database.
