@@ -681,6 +681,9 @@ async def get_project_repositories_with_semantic_filter(
 
     else:
         # --- This path is for STANDARD, non-semantic requests ---
+        print("******************************************************************************************")
+        print("No search query, using standard non-semantic request")
+        print("******************************************************************************************")
         from_clause = f"FROM {get_schema_name('api')}.top_projects_repos tpr"
         where_sql = "tpr.project_title ILIKE %(project_title)s"
         select_fields += ", NULL as distance"
