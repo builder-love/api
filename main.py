@@ -12,6 +12,7 @@ import numpy as np
 import httpx
 import google.auth
 import google.auth.transport.requests
+from google.oauth2 import id_token
 
 # This URL is only accessible from within Google Cloud
 # we use this to get the internal IP of the GCE instance
@@ -573,10 +574,11 @@ async def generate_embedding(search_text: str, gce_audience_url: str) -> List[fl
     # Get a GCP identity token to securely call the other Cloud Run service
     creds, project = google.auth.default()
     auth_req = google.auth.transport.requests.Request()
-    id_token = google.oauth2.id_token.fetch_id_token(auth_req, gce_audience_url)
+    identity_token = id_token.fetch_id_token(auth_req, gce_audience_url)
 
+    # Set the headers for the request
     headers = {
-        "Authorization": f"Bearer {id_token}",
+        "Authorization": f"Bearer {identity_token}",
         "Content-Type": "application/json"
     }
 
