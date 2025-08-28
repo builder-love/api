@@ -650,7 +650,11 @@ async def get_project_repositories_with_semantic_filter(
 
         # call the get_semantically_similar_repos function to generate an embedding
         print("Starting embedding generation...")
-        embedding = await generate_embedding(payload.search, gce_audience_url)
+        try:
+            embedding = await generate_embedding(payload.search, gce_audience_url)
+        except Exception as e:
+            print(f"Error generating embedding: {e}")
+            raise HTTPException(status_code=500, detail="Error generating embedding. Check qwen-embedding-api cloud run service")
         print("Embeddings generated...")
         params["embedding"] = np.array(embedding)
         # Similarity threshold
@@ -706,9 +710,9 @@ async def get_project_repositories_with_semantic_filter(
                 offset = (payload.page - 1) * payload.limit
                 params["limit"] = payload.limit
                 params["offset"] = offset
-                # print(f"Total items: {total_items}")
-                # full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
-                # print(f"Executing Data Query:\n{full_sql_query.replace('\n', ' ')}\n")
+                print(f"Total items: {total_items}")
+                full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
+                print(f"Executing Data Query:\n{full_sql_query.replace('\n', ' ')}\n")
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
