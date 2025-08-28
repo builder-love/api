@@ -1,3 +1,5 @@
+# requirements.txt
+
 pydantic-settings==2.8.1
 annotated-types==0.7.0
 anyio==4.9.0
@@ -16,4 +18,4 @@ uvicorn==0.34.0
 numpy==1.26.4
 pgvector==0.2.0
 httpx==0.28.1
-google-auth==2.40.3
+google-auth[requests]==2.40.3
