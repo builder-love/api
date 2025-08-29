@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     
     # Environment
     ENV: str = "production"
+
+    # project details
+    GCP_PROJECT_ID: str
+    GCP_LOCATION: str = "us-central1"
     
     # Schema prefix (empty for production, "_stg" for staging)
     SCHEMA_SUFFIX: str = ""
