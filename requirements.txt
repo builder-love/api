@@ -18,5 +18,4 @@ uvicorn==0.34.0
 numpy==1.26.4
 pgvector==0.2.0
 httpx==0.28.1
-google-auth[requests]==2.40.3
-google-api-python-client==2.179.0
+google-cloud-aiplatform==1.111.0
