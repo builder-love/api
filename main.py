@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
 from fastapi.security import APIKeyHeader
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional, Union, Dict
 import os
@@ -12,9 +11,8 @@ from pgvector.psycopg2 import register_vector
 import numpy as np
 import httpx
 import google.auth
-import vertexai
-from vertexai.language_models import TextEmbeddingModel
-from contextlib import asynccontextmanager
+import google.auth.transport.requests
+from google.oauth2 import id_token
 
 # This URL is only accessible from within Google Cloud
 # we use this to get the internal IP of the GCE instance
@@ -27,33 +25,6 @@ settings = get_settings()
 
 # API Key Authentication
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
-
-# initialize vertex before app startup
-# Global state to hold the initialized model, preventing re-initialization on every call
-VERTEX_AI_STATE = {"model": None}
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Handles application startup and shutdown events.
-    Initializes the Vertex AI model once when the server starts.
-    """
-    print("INFO:     Initializing Vertex AI...")
-    # Initialize the Vertex AI SDK with project and location from your settings
-    vertexai.init(project=settings.GCP_PROJECT_ID, location=settings.GCP_LOCATION)
-    
-    # Load the specified embedding model once and store it in the global state
-    model_name = "gemini-embedding-001" 
-    VERTEX_AI_STATE["model"] = TextEmbeddingModel.from_pretrained(model_name)
-    print(f"INFO:     Vertex AI model '{model_name}' initialized successfully.")
-    
-    yield # The application is now running
-    
-    # This part of the code would run on shutdown (optional)
-    print("INFO:     Application is shutting down.")
-
-# --- Initialize the FastAPI App with the Lifespan Manager ---
-app = FastAPI(lifespan=lifespan)
 
 async def get_api_key(api_key: str = Security(api_key_header)):
     if api_key != settings.API_KEY:
@@ -590,37 +561,40 @@ VALID_SORT_COLUMNS_REPOS = {
 embedding_cache: Dict[str, List[float]] = {}
 
 # embedding generation and semantic search orchestration logic
-async def generate_embedding(search_text: str) -> List[float]:
+async def generate_embedding(search_text: str, gce_audience_url: str) -> List[float]:
     """
-    Generates an embedding for the given text using the initialized Vertex AI model.
+    Calls the dedicated Qwen embedding service on Cloud Run.
     """
 
     # Check the cache first...
     if search_text in embedding_cache:
-        print(f"Cache HIT for Vertex AI: '{search_text}'")
+        print(f"Cache HIT for Qwen: '{search_text}'")
         return embedding_cache[search_text]
 
-    print(f"Cache MISS. Generating new Vertex AI embedding for: '{search_text}'")
-    model = VERTEX_AI_STATE.get("model")
-    if not model:
-        raise HTTPException(status_code=503, detail="Vertex AI embedding model not initialized.")
+    # Get a GCP identity token to securely call the other Cloud Run service
+    creds, project = google.auth.default()
+    auth_req = google.auth.transport.requests.Request()
+    identity_token = id_token.fetch_id_token(auth_req, gce_audience_url)
 
-    try:
-        # The SDK's get_embeddings method is synchronous (blocking).
-        # We run it in a threadpool to avoid blocking the server's main event loop.
-        instances = [search_text]
-        embeddings_result = await run_in_threadpool(model.get_embeddings, instances)
-        
-        # Extract the vector values from the first result object
-        embedding_vector = embeddings_result[0].values
+    # Set the headers for the request
+    headers = {
+        "Authorization": f"Bearer {identity_token}",
+        "Content-Type": "application/json"
+    }
 
-        # Store the successful result in the cache
-        embedding_cache[search_text] = embedding_vector
-        return embedding_vector
-        
-    except Exception as e:
-        print(f"Error calling Vertex AI embedding model: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate embedding from Vertex AI.")
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            gce_audience_url,
+            headers=headers,
+            json={"text": search_text},
+            timeout=15.0
+        )
+        response.raise_for_status()
+        embedding = response.json()["embedding"]
+
+    # Store in cache and return
+    embedding_cache[search_text] = embedding
+    return embedding
 
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
 async def get_project_repositories_with_semantic_filter(
@@ -674,14 +648,16 @@ async def get_project_repositories_with_semantic_filter(
     print("******************************************************************************************")
     if payload.search:
 
+        # The audience is the URL of the GCE service
+        gce_audience_url = settings.GCE_EMBED_URL # set to the cloud run service URL
+
         # call the get_semantically_similar_repos function to generate an embedding
-        print("Starting Vertex AI embedding generation...")
+        print("Starting embedding generation...")
         try:
-            # Call the new Vertex AI embedding function instead of the old one
-            embedding = await generate_embedding(payload.search)
+            embedding = await generate_embedding(payload.search, gce_audience_url)
         except Exception as e:
             print(f"Error generating embedding: {e}")
-            raise HTTPException(status_code=500, detail="Error generating embedding. Check Vertex AI embedding model")
+            raise HTTPException(status_code=500, detail="Error generating embedding. Check qwen-embedding-api cloud run service")
         print("Embeddings generated...")
         params["embedding"] = np.array(embedding)
         # Similarity threshold
