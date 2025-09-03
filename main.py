@@ -671,7 +671,8 @@ async def get_project_repositories_with_semantic_filter(
 
     # Define a threshold for semantic similarity.
     # A lower value means higher similarity. 0.5 is a reasonable starting point.
-    SIMILARITY_THRESHOLD = 0.6
+    # we use a higher threshold since we are limiting and sorting results by distance
+    SIMILARITY_THRESHOLD = 0.75
     CANDIDATE_LIMIT = 200
 
     if db is None:
