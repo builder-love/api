@@ -697,7 +697,8 @@ async def get_project_repositories_with_semantic_filter(
         tpr.weighted_score_index, tpr.repo_rank, tpr.quartile_bucket, 
         tpr.repo_rank_category, tpr.predicted_is_dev_tooling, 
         tpr.predicted_is_educational, tpr.predicted_is_scaffold, 
-        tpr.predicted_is_app, tpr.predicted_is_infrastructure
+        tpr.predicted_is_app, tpr.predicted_is_infrastructure, 
+        pre.distance
     """
 
     # ---- embedding generation and semantic search orchestration logic ----
@@ -722,21 +723,25 @@ async def get_project_repositories_with_semantic_filter(
         # Similarity threshold
         params["similarity_threshold"] = SIMILARITY_THRESHOLD
 
-        # The JOIN is only needed for semantic search
+        # This subquery finds the relevant repos using the vector index FIRST.
         from_clause = f"""
-            FROM {get_schema_name('api')}.top_projects_repos AS tpr
-            JOIN {get_schema_name('api')}.project_repo_embeddings AS pre
-                 ON tpr.repo = pre.repo
+            FROM (
+                SELECT
+                    repo,
+                    (corpus_embedding <=> %(embedding)s) as distance
+                FROM {get_schema_name('api')}.latest_project_repo_corpus_embeddings
+                WHERE (corpus_embedding <=> %(embedding)s) < %(similarity_threshold)s
+            ) AS pre
+            JOIN {get_schema_name('api')}.top_projects_repos AS tpr ON pre.repo = tpr.repo
         """
-        # Filters by the similarity score.
-        where_sql = "tpr.project_title ILIKE %(project_title)s AND (pre.corpus_embedding <=> %(embedding)s) < %(similarity_threshold)s"
-        
-        # Add the distance calculation to the SELECT statement.
-        select_fields += ", (pre.corpus_embedding <=> %(embedding)s) as distance"
+
+        # The WHERE clause only applies to the outer query--project title
+        where_sql = "tpr.project_title ILIKE %(project_title)s"
         
         # Default sort for semantic search is by distance (relevance).
         # The user can override this by selecting another column.
-        order_by_sql = f"ORDER BY {db_sort_column} {db_sort_order} NULLS LAST"
+        db_sort_column_aliased = f"tpr.{db_sort_column}" if db_sort_column != "distance" else "pre.distance"
+        order_by_sql = f"ORDER BY {db_sort_column_aliased} {db_sort_order} NULLS LAST"
 
     else:
         # --- This path is for STANDARD, non-semantic requests ---
