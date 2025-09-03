@@ -606,6 +606,7 @@ embedding_cache: Dict[str, List[float]] = {}
 async def generate_embedding(search_text: str, gce_audience_url: str) -> List[float]:
     """
     Calls the dedicated Qwen embedding service on Cloud Run.
+    Applies PCA transformation to the embedding to reduce dimensionality to match the embedding dimensions in the database.
     """
 
     # Check the cache first...
