@@ -697,8 +697,7 @@ async def get_project_repositories_with_semantic_filter(
         tpr.weighted_score_index, tpr.repo_rank, tpr.quartile_bucket, 
         tpr.repo_rank_category, tpr.predicted_is_dev_tooling, 
         tpr.predicted_is_educational, tpr.predicted_is_scaffold, 
-        tpr.predicted_is_app, tpr.predicted_is_infrastructure, 
-        pre.distance
+        tpr.predicted_is_app, tpr.predicted_is_infrastructure
     """
 
     # ---- embedding generation and semantic search orchestration logic ----
@@ -737,6 +736,9 @@ async def get_project_repositories_with_semantic_filter(
 
         # The WHERE clause only applies to the outer query--project title
         where_sql = "tpr.project_title ILIKE %(project_title)s"
+
+        # conditionally add the distance column to the select fields
+        select_fields += ", pre.distance"
         
         # Default sort for semantic search is by distance (relevance).
         # The user can override this by selecting another column.
