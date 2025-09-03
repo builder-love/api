@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional, Union, Dict
+from contextlib import asynccontextmanager
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -13,12 +14,57 @@ import httpx
 import google.auth
 import google.auth.transport.requests
 from google.oauth2 import id_token
+from google.cloud import storage
+import pickle
 
 # This URL is only accessible from within Google Cloud
 # we use this to get the internal IP of the GCE instance
 METADATA_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience="
 
-app = FastAPI()
+# Helper function to get schema name
+def get_schema_name(base_schema: str) -> str:
+    return f"{base_schema}{settings.SCHEMA_SUFFIX}"
+
+
+# --- Global variable to hold the loaded PCA model ---
+# this is for the semantic search
+pca_model = None
+
+# --- Function to load the model from GCS ---
+def load_pca_model_from_gcs():
+    """Downloads the PCA model from GCS and loads it into memory."""
+    global pca_model
+    try:
+        # Use environment variables for configuration
+        bucket_name = "bl-repo-corpus-public" # Or from settings
+        model_path = "embeddings_data/trained_pca_models/qwen3_repo_pca_model.pkl" 
+
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(model_path)
+
+        print(f"INFO:     Downloading PCA model from gs://{bucket_name}/{model_path}...")
+        model_bytes = blob.download_as_bytes()
+        pca_model = pickle.loads(model_bytes)
+        print("INFO:     PCA model loaded successfully.")
+
+    except Exception as e:
+        # Log a critical error if the model can't be loaded, as the app won't function.
+        print(f"CRITICAL: Failed to load PCA model. Semantic search will fail. Error: {e}")
+        # Depending on your needs, you might want the app to exit if the model is essential.
+        # sys.exit(1)
+
+
+# --- Lifespan handler replacing deprecated on_event startup ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run once on startup
+    load_pca_model_from_gcs()
+    yield
+    # Optional: add shutdown cleanup here
+
+# Initialize FastAPI with lifespan
+app = FastAPI(lifespan=lifespan)
 
 # Get settings
 settings = get_settings()
@@ -72,10 +118,6 @@ def get_db_connection():
             conn.close()
         else:
             print("No active database connection to close.")
-
-# Helper function to get schema name
-def get_schema_name(base_schema: str) -> str:
-    return f"{base_schema}{settings.SCHEMA_SUFFIX}"
 
 ####################################################### get project metrics #######################################################
 
@@ -590,11 +632,24 @@ async def generate_embedding(search_text: str, gce_audience_url: str) -> List[fl
             timeout=15.0
         )
         response.raise_for_status()
-        embedding = response.json()["embedding"]
+        raw_embedding = response.json()["embedding"]
+
+    # apply pca transformation
+    # 1. Convert the raw embedding list to a NumPy array
+    raw_embedding_np = np.array(raw_embedding, dtype=np.float32)
+
+    # 2. Reshape the 1D array [dim,] to a 2D array [1, dim] because .transform() expects a batch of vectors
+    reshaped_embedding = raw_embedding_np.reshape(1, -1)
+    
+    # 3. Apply the PCA transformation
+    reduced_embedding_np = pca_model.transform(reshaped_embedding)
+    
+    # 4. The result is a 2D array, so extract the first (and only) row and convert to a list
+    final_embedding = reduced_embedding_np[0].tolist()
 
     # Store in cache and return
-    embedding_cache[search_text] = embedding
-    return embedding
+    embedding_cache[search_text] = final_embedding
+    return final_embedding
 
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
 async def get_project_repositories_with_semantic_filter(
