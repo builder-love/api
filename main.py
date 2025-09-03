@@ -672,6 +672,7 @@ async def get_project_repositories_with_semantic_filter(
     # Define a threshold for semantic similarity.
     # A lower value means higher similarity. 0.5 is a reasonable starting point.
     SIMILARITY_THRESHOLD = 0.6
+    CANDIDATE_LIMIT = 200
 
     if db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
@@ -722,20 +723,22 @@ async def get_project_repositories_with_semantic_filter(
         # Similarity threshold
         params["similarity_threshold"] = SIMILARITY_THRESHOLD
 
-        # This subquery finds the relevant repos using the vector index FIRST.
+        # This subquery finds the relevant repos using the vector index FIRST. 
+        # Using ORDER BY and LIMIT to activate the HNSW index.
         from_clause = f"""
             FROM (
                 SELECT
                     repo,
                     (corpus_embedding <=> %(embedding)s) as distance
                 FROM {get_schema_name('api')}.project_repo_embeddings
-                WHERE (corpus_embedding <=> %(embedding)s) < %(similarity_threshold)s
+                ORDER BY distance
+                LIMIT {CANDIDATE_LIMIT}
             ) AS pre
             JOIN {get_schema_name('api')}.top_projects_repos AS tpr ON pre.repo = tpr.repo
         """
 
         # The WHERE clause only applies to the outer query--project title
-        where_sql = "tpr.project_title ILIKE %(project_title)s"
+        where_sql = "tpr.project_title ILIKE %(project_title)s AND pre.distance <= %(similarity_threshold)s"
 
         # conditionally add the distance column to the select fields
         select_fields += ", pre.distance"
