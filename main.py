@@ -728,6 +728,7 @@ async def get_project_repositories_with_semantic_filter(
         subquery_sql = f"""
             SELECT
                 repo,
+                project_title,
                 (corpus_embedding <=> %(embedding)s) as distance
             FROM {get_schema_name('api')}.project_repo_embeddings
             WHERE project_title ILIKE %(project_title)s
@@ -738,7 +739,7 @@ async def get_project_repositories_with_semantic_filter(
         # The FROM clause joins the small set of candidates to get the full details.
         from_clause = f"""
             FROM ({subquery_sql}) AS pre
-            JOIN {get_schema_name('api')}.top_projects_repos AS tpr ON pre.repo = tpr.repo
+            JOIN {get_schema_name('api')}.top_projects_repos AS tpr ON pre.repo = tpr.repo AND tpr.project_title = pre.project_title
         """
 
         # The outer WHERE clause applies the final similarity threshold.
