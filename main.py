@@ -728,7 +728,7 @@ async def get_project_repositories_with_semantic_filter(
                 SELECT
                     repo,
                     (corpus_embedding <=> %(embedding)s) as distance
-                FROM {get_schema_name('api')}.latest_project_repo_corpus_embeddings
+                FROM {get_schema_name('api')}.project_repo_embeddings
                 WHERE (corpus_embedding <=> %(embedding)s) < %(similarity_threshold)s
             ) AS pre
             JOIN {get_schema_name('api')}.top_projects_repos AS tpr ON pre.repo = tpr.repo
