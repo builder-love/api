@@ -775,7 +775,7 @@ async def get_project_repositories_with_semantic_filter(
                 full_sql_query = cur.mogrify(data_query_sql, temp_params).decode('utf-8')
                 print("\n" + "="*50)
                 print("COPY AND RUN THIS QUERY IN PGADMIN:")
-                print(full_sql_query)
+                print(full_sql_query.replace('\n', ' '))
                 print("="*50 + "\n")
             # ---- END OF DEBUGGING ----
 
