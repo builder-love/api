@@ -764,6 +764,21 @@ async def get_project_repositories_with_semantic_filter(
         with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Set a timeout for this transaction that is less than the Vercel timeout (10 seconds)
             cur.execute("SET LOCAL statement_timeout = '8000';") # 8000ms = 8 seconds
+
+            # ---- DEBUGGING ----
+            # We need to temporarily add limit/offset to params for mogrify to work.
+            if payload.search:
+                temp_params = params.copy()
+                temp_params["limit"] = payload.limit
+                temp_params["offset"] = (payload.page - 1) * payload.limit
+                
+                full_sql_query = cur.mogrify(data_query_sql, temp_params).decode('utf-8')
+                print("\n" + "="*50)
+                print("COPY AND RUN THIS QUERY IN PGADMIN:")
+                print(full_sql_query)
+                print("="*50 + "\n")
+            # ---- END OF DEBUGGING ----
+
             # Execute the count query using the 'params' dictionary we've been building.
             cur.execute(count_query_sql, params)
             total_items_result = cur.fetchone()
@@ -775,13 +790,8 @@ async def get_project_repositories_with_semantic_filter(
                 offset = (payload.page - 1) * payload.limit
                 params["limit"] = payload.limit
                 params["offset"] = offset
-                # ---- DEBUGGING ----
-                # Use mogrify to see the complete, interpolated query
-                full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
                 print("\n" + "="*50)
                 print(f"Total items: {total_items}")
-                print("COPY AND RUN THIS QUERY IN PGADMIN:")
-                print(full_sql_query)
                 print("="*50 + "\n")
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
