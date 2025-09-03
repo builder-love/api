@@ -620,6 +620,7 @@ async def generate_embedding(search_text: str, gce_audience_url: str) -> List[fl
     identity_token = id_token.fetch_id_token(auth_req, gce_audience_url)
 
     # Set the headers for the request
+    print("...fetching embedding from microservice")
     headers = {
         "Authorization": f"Bearer {identity_token}",
         "Content-Type": "application/json"
@@ -643,6 +644,7 @@ async def generate_embedding(search_text: str, gce_audience_url: str) -> List[fl
     reshaped_embedding = raw_embedding_np.reshape(1, -1)
     
     # 3. Apply the PCA transformation
+    print("...applying PCA transformation")
     reduced_embedding_np = pca_model.transform(reshaped_embedding)
     
     # 4. The result is a 2D array, so extract the first (and only) row and convert to a list
@@ -650,6 +652,7 @@ async def generate_embedding(search_text: str, gce_audience_url: str) -> List[fl
 
     # Store in cache and return
     embedding_cache[search_text] = final_embedding
+
     return final_embedding
 
 @app.post("/api/projects/{project_title_url_encoded}/repos", response_model=PaginatedRepoResponse, dependencies=[Depends(get_api_key)])
@@ -772,9 +775,14 @@ async def get_project_repositories_with_semantic_filter(
                 offset = (payload.page - 1) * payload.limit
                 params["limit"] = payload.limit
                 params["offset"] = offset
-                print(f"Total items: {total_items}")
+                # ---- DEBUGGING ----
+                # Use mogrify to see the complete, interpolated query
                 full_sql_query = cur.mogrify(data_query_sql, params).decode('utf-8')
-                print(f"Executing Data Query:\n{full_sql_query.replace('\n', ' ')}\n")
+                print("\n" + "="*50)
+                print(f"Total items: {total_items}")
+                print("COPY AND RUN THIS QUERY IN PGADMIN:")
+                print(full_sql_query)
+                print("="*50 + "\n")
                 # Execute the data query only if there are items to fetch.
                 cur.execute(data_query_sql, params)
                 items = cur.fetchall()
